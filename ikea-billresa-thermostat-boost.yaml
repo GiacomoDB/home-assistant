@@ -1,131 +1,58 @@
 blueprint:
-  name: "IKEA Bilresa Button – Tado Thermostat Boost (Once Per Day)"
-  description: "Boost Tado thermostats with multi-click on Bilresa center button. 3-click and 6-click trigger different thermostats. Limited to one boost per day."
+  name: "Tado Thermostat Boost"
+  description: "Boost Tado thermostats when button is pressed. Limited to once per day."
   domain: automation
   input:
-    button_event_entity:
-      name: "Button Event Entity"
-      description: "Event entity for the Bilresa center button"
+    button:
+      name: "Button"
       selector:
         entity:
           domain: event
 
-    thermostat_3_click:
-      name: "Thermostat for 3-Click"
-      description: "Tado thermostat to boost on 3-click"
+    thermostat_1:
+      name: "Thermostat 1"
       selector:
         entity:
           domain: climate
 
-    thermostat_6_click:
-      name: "Thermostat for 6-Click"
-      description: "Tado thermostat to boost on 6-click"
+    thermostat_2:
+      name: "Thermostat 2"
       selector:
         entity:
           domain: climate
-
-    boost_temperature:
-      name: "Boost Temperature (°C)"
-      description: "Temperature to set during boost"
-      default: 25
-      selector:
-        number:
-          min: 18
-          max: 30
-          step: 0.5
-          unit_of_measurement: "°C"
-
-    boost_duration:
-      name: "Boost Duration (minutes)"
-      description: "How long the boost lasts before reverting to schedule"
-      default: 15
-      selector:
-        number:
-          min: 5
-          max: 60
-          step: 5
-          unit_of_measurement: "min"
 
     daily_limit_helper:
       name: "Daily Limit Helper"
-      description: "Input boolean that tracks if boost was used today. Create this helper and reset it at midnight."
       selector:
         entity:
           domain: input_boolean
 
-    event_type_3_click:
-      name: "Event Type for 3-Click"
-      description: "The event_type value when button is clicked 3 times (check Developer Tools → States)"
-      default: "multi_press_3"
-      selector:
-        text:
-
-    event_type_6_click:
-      name: "Event Type for 6-Click"
-      description: "The event_type value when button is clicked 6 times (check Developer Tools → States)"
-      default: "multi_press_6"
-      selector:
-        text:
-
 trigger:
   - platform: state
-    entity_id: !input button_event_entity
+    entity_id: !input button
 
 condition:
-  # Avoid false triggers from unknown/unavailable states
-  - condition: not
-    conditions:
-      - condition: state
-        entity_id: !input button_event_entity
-        state: "unknown"
-  - condition: not
-    conditions:
-      - condition: state
-        entity_id: !input button_event_entity
-        state: "unavailable"
-  # Check daily limit not reached
   - condition: state
     entity_id: !input daily_limit_helper
     state: "off"
 
 action:
-  - variables:
-      event_type: "{{ trigger.to_state.state }}"
-      event_3_click: !input event_type_3_click
-      event_6_click: !input event_type_6_click
-      temp: !input boost_temperature
-      duration_mins: !input boost_duration
-      duration_str: "{{ '%02d' | format(duration_mins // 60) }}:{{ '%02d' | format(duration_mins % 60) }}:00"
+  - service: tado.set_climate_timer
+    target:
+      entity_id: !input thermostat_1
+    data:
+      temperature: 25
+      time_period: "00:15:00"
 
-  - choose:
-      # 3-click: boost thermostat A
-      - conditions:
-          - condition: template
-            value_template: "{{ event_type == event_3_click }}"
-        sequence:
-          - service: tado.set_climate_timer
-            target:
-              entity_id: !input thermostat_3_click
-            data:
-              temperature: "{{ temp }}"
-              time_period: "{{ duration_str }}"
-          - service: input_boolean.turn_on
-            target:
-              entity_id: !input daily_limit_helper
+  - service: tado.set_climate_timer
+    target:
+      entity_id: !input thermostat_2
+    data:
+      temperature: 25
+      time_period: "00:15:00"
 
-      # 6-click: boost thermostat B
-      - conditions:
-          - condition: template
-            value_template: "{{ event_type == event_6_click }}"
-        sequence:
-          - service: tado.set_climate_timer
-            target:
-              entity_id: !input thermostat_6_click
-            data:
-              temperature: "{{ temp }}"
-              time_period: "{{ duration_str }}"
-          - service: input_boolean.turn_on
-            target:
-              entity_id: !input daily_limit_helper
+  - service: input_boolean.turn_on
+    target:
+      entity_id: !input daily_limit_helper
 
 mode: single
