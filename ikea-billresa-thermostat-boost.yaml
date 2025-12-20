@@ -27,6 +27,12 @@ blueprint:
         entity:
           domain: input_boolean
 
+    indicator_light:
+      name: "Indicator Light"
+      selector:
+        entity:
+          domain: light
+
 trigger:
   - platform: state
     entity_id: !input button
@@ -54,5 +60,16 @@ action:
   - service: input_boolean.turn_on
     target:
       entity_id: !input daily_limit_helper
+
+  - service: light.turn_on
+    target:
+      entity_id: !input indicator_light
+
+  - delay:
+      seconds: 2
+
+  - service: light.turn_off
+    target:
+      entity_id: !input indicator_light
 
 mode: single
