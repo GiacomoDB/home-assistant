@@ -90,7 +90,7 @@ condition:
 
 action:
   - variables:
-      event_type: "{{ state_attr(trigger.entity_id, 'event_type') }}"
+      event_type: "{{ trigger.to_state.state }}"
       event_3_click: !input event_type_3_click
       event_6_click: !input event_type_6_click
       temp: !input boost_temperature
