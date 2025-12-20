@@ -1,0 +1,149 @@
+blueprint:
+  name: "IKEA Bilresa Scroll Wheel – Thermostat Control (Right & Left)"
+  description: "Universal temperature control for IKEA Bilresa Scroll Wheel with separate configurations for clockwise and counter-clockwise rotation"
+  domain: automation
+  input:
+    scrollwheel_right_event_entity:
+      name: "Scroll Wheel Event Entity – Clockwise"
+      description: "Event entity of the scroll wheel for clockwise rotation"
+      selector:
+        entity:
+          domain: event
+
+    scrollwheel_left_event_entity:
+      name: "Scroll Wheel Event Entity – Counter-clockwise"
+      description: "Event entity of the scroll wheel for counter-clockwise rotation"
+      selector:
+        entity:
+          domain: event
+
+    target_thermostat:
+      name: "Target Thermostat"
+      description: "Tado thermostat to be controlled"
+      selector:
+        entity:
+          domain: climate
+
+    scroll_right_direction:
+      name: "Action on Clockwise Rotation"
+      description: "What should happen on clockwise rotation?"
+      selector:
+        select:
+          options:
+            - label: "Increase temperature"
+              value: "increase"
+            - label: "Decrease temperature"
+              value: "decrease"
+      default: "increase"
+
+    scroll_left_direction:
+      name: "Action on Counter-clockwise Rotation"
+      description: "What should happen on counter-clockwise rotation?"
+      selector:
+        select:
+          options:
+            - label: "Increase temperature"
+              value: "increase"
+            - label: "Decrease temperature"
+              value: "decrease"
+      default: "decrease"
+
+    temp_per_step_right:
+      name: "Temperature per Step – Clockwise (°C)"
+      default: 0.5
+      selector:
+        number:
+          min: 0.5
+          max: 2
+          step: 0.5
+
+    temp_per_step_left:
+      name: "Temperature per Step – Counter-clockwise (°C)"
+      default: 0.5
+      selector:
+        number:
+          min: 0.5
+          max: 2
+          step: 0.5
+
+    min_temperature:
+      name: "Minimum Temperature (°C)"
+      default: 5
+      description: "Minimum allowed temperature setting"
+      selector:
+        number:
+          min: 5
+          max: 15
+
+    max_temperature:
+      name: "Maximum Temperature (°C)"
+      default: 25
+      description: "Maximum allowed temperature setting"
+      selector:
+        number:
+          min: 20
+          max: 30
+
+trigger:
+  - platform: state
+    entity_id: !input scrollwheel_right_event_entity
+    id: "right_scroll"
+  - platform: state
+    entity_id: !input scrollwheel_left_event_entity
+    id: "left_scroll"
+
+action:
+  - variables:
+      is_right_scroll: "{{ trigger.id == 'right_scroll' }}"
+      scroll_direction_right: !input scroll_right_direction
+      scroll_direction_left: !input scroll_left_direction
+      temp_step_right: !input temp_per_step_right
+      temp_step_left: !input temp_per_step_left
+      min_temp: !input min_temperature
+      max_temp: !input max_temperature
+      target_entity: !input target_thermostat
+
+      # Determine direction based on trigger
+      direction: >-
+        {% if is_right_scroll %}
+          {{ 1 if scroll_direction_right == 'increase' else -1 }}
+        {% else %}
+          {{ 1 if scroll_direction_left == 'increase' else -1 }}
+        {% endif %}
+
+      # Determine temperature per step
+      temp_step: "{{ temp_step_right if is_right_scroll else temp_step_left }}"
+
+      # Extract event type
+      event_type_str: "{{ state_attr(trigger.entity_id, 'event_type') }}"
+
+      # Calculate press count
+      press_count:
+        "{{ trigger.to_state.attributes.totalNumberOfPressesCounted | int(1) }}"
+
+      # Calculate temperature change
+      temp_change: "{{ (temp_step | float(0.5) * press_count | int(1) * direction | int) }}"
+
+      # Get current temperature
+      current_temp: "{{ state_attr(target_entity, 'temperature') | float(20) }}"
+
+      # Calculate new temperature with clamp
+      raw_temp: "{{ current_temp + temp_change }}"
+      new_temperature: >-
+        {% set t = raw_temp | float %}
+        {% if t < min_temp | float %}
+          {{ min_temp }}
+        {% elif t > max_temp | float %}
+          {{ max_temp }}
+        {% else %}
+          {{ t }}
+        {% endif %}
+
+  - service: climate.set_temperature
+    target:
+      entity_id: !input target_thermostat
+    data:
+      temperature: "{{ new_temperature | float }}"
+
+mode: queued
+max: 20
