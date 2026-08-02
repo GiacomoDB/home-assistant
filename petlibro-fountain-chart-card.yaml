@@ -1,0 +1,35 @@
+type: custom:apexcharts-card
+grid_options:
+  columns: full
+  rows: auto
+header:
+  show: true
+  title: Water Consumption — Today vs Yesterday
+  show_states: true
+  colorize_states: true
+graph_span: 24h
+span:
+  start: day
+yaxis:
+  - decimals: 0
+    apex_config:
+      title:
+        text: mL
+series:
+  - entity: sensor.dockstream_smart_fountain_today_s_water_consumption
+    name: Today
+    type: line
+    stroke_width: 3
+    color: "#38b6ff"
+    group_by:
+      func: last
+      duration: 10min
+  - entity: sensor.dockstream_smart_fountain_today_s_water_consumption
+    name: Yesterday
+    type: line
+    stroke_width: 2
+    color: "#94a3b8"
+    offset: "-1d"
+    group_by:
+      func: last
+      duration: 10min
