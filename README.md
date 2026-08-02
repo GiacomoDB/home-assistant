@@ -49,6 +49,10 @@ A styled card for a Petlibro / Dockstream smart water fountain. Shows remaining 
 - `sensor.dockstream_smart_fountain_yesterday_s_water_consumption`
 - `sensor.dockstream_smart_fountain_yesterday_s_total_drinking_times`
 
+Ex:   
+<img width="298" height="526" alt="Screenshot 2026-08-02 at 17 26 07" src="https://github.com/user-attachments/assets/6c9f8f80-aa3c-4d50-96a6-2b314042a540" />
+
+
 ### Petlibro Fountain Chart Card
 
 A line chart comparing today's cumulative water consumption against yesterday's, overlaid on the same time-of-day axis. Pairs with the stat card above.
