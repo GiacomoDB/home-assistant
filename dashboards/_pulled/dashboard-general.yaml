@@ -1,0 +1,224 @@
+# Snapshot of the 'General' dashboard as it
+# exists in Home Assistant (url_path: 'dashboard-general').
+#
+# Not deployed -- only dashboards listed in ../dashboards.yaml are.
+# Pulled with: python scripts/ha.py pull
+
+views:
+- title: Home
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: New section
+    - type: custom:html-template-card
+      title: ''
+      ignore_line_breaks: true
+      content: "{% set water_pct = states('sensor.dockstream_smart_fountain_remaining_water_2') | float(0)\
+        \ %}\n{% set today_consumption = states('sensor.dockstream_smart_fountain_today_s_water_consumption')\
+        \ | float(0) %}\n{% set today_avg_time = states('sensor.dockstream_smart_fountain_today_s_average_drinking_time')\
+        \ | float(0) %}\n{% set today_total_time = states('sensor.dockstream_smart_fountain_today_s_total_drinking_time')\
+        \ | float(0) %}\n{% set today_times = states('sensor.dockstream_smart_fountain_today_s_total_drinking_times')\
+        \ | float(0) %}\n{% set yesterday_consumption = states('sensor.dockstream_smart_fountain_yesterday_s_water_consumption')\
+        \ | float(0) %}\n{% set yesterday_times = states('sensor.dockstream_smart_fountain_yesterday_s_total_drinking_times')\
+        \ | float(0) %}\n\n{% set total_min = (today_total_time / 60) | round(0) %}\n\n{# fraction of\
+        \ the day elapsed so far (0-1), used to prorate yesterday to the same time of day #}\n{% set day_fraction\
+        \ = (now() - now().replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds() / 86400\
+        \ %}\n{% set yesterday_at_now = yesterday_consumption * day_fraction %}\n{% set yesterday_times_at_now\
+        \ = yesterday_times * day_fraction %}\n\n{% if yesterday_at_now > 0 %}\n  {% set change_pct =\
+        \ (((today_consumption - yesterday_at_now) / yesterday_at_now) * 100) | round(0) | int %}\n{%\
+        \ else %}\n  {% set change_pct = 0 %}\n{% endif %}\n\n{% if water_pct > 50 %}\n  {% set water_color\
+        \ = '#38b6ff' %}\n  {% set water_glow = 'rgba(56,182,255,0.15)' %}\n{% elif water_pct > 25 %}\n\
+        \  {% set water_color = '#fbbf24' %}\n  {% set water_glow = 'rgba(251,191,36,0.15)' %}\n{% else\
+        \ %}\n  {% set water_color = '#f87171' %}\n  {% set water_glow = 'rgba(248,113,113,0.15)' %}\n\
+        {% endif %}\n\n<style>\n  /* ── reset ── */\n  ha-card { background: none !important; box-shadow:\
+        \ none !important; border: none !important; }\n\n  .plf-card {\n    font-family: -apple-system,\
+        \ BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    background: var(--ha-card-background,\
+        \ var(--card-background-color, #fff));\n    border-radius: 20px;\n    overflow: hidden;\n    box-shadow:\
+        \ 0 2px 12px rgba(0,0,0,0.08);\n  }\n\n  /* ── header — always dark for contrast with the fountain\
+        \ SVG ── */\n  .plf-header {\n    position: relative;\n    background: linear-gradient(160deg,\
+        \ #0f2a3d 0%, #0a1c2e 40%, #0d2235 100%);\n    padding: 24px 22px 20px;\n    overflow: hidden;\n\
+        \  }\n\n  .plf-header::before {\n    content: '';\n    position: absolute;\n    inset: 0;\n  \
+        \  background:\n      radial-gradient(ellipse 120% 60% at 50% 110%, {{ water_glow }} 0%, transparent\
+        \ 60%),\n      radial-gradient(circle at 80% 20%, rgba(56,182,255,0.04) 0%, transparent 40%);\n\
+        \  }\n\n  .plf-header-top {\n    display: flex;\n    align-items: center;\n    justify-content:\
+        \ space-between;\n    position: relative;\n    z-index: 1;\n    margin-bottom: 14px;\n  }\n\n\
+        \  .plf-device-label {\n    font-size: 11px;\n    font-weight: 600;\n    letter-spacing: 1.5px;\n\
+        \    text-transform: uppercase;\n    color: rgba(56,182,255,0.7);\n  }\n\n  .plf-status-dot {\n\
+        \    width: 7px;\n    height: 7px;\n    border-radius: 50%;\n    background: #34d399;\n    box-shadow:\
+        \ 0 0 6px rgba(52,211,153,0.5);\n    animation: plf-pulse 2.5s ease-in-out infinite;\n  }\n\n\
+        \  @keyframes plf-pulse {\n    0%, 100% { opacity: 1; }\n    50% { opacity: 0.45; }\n  }\n\n \
+        \ .plf-fountain-area {\n    display: flex;\n    align-items: center;\n    gap: 18px;\n    position:\
+        \ relative;\n    z-index: 1;\n  }\n\n  .plf-svg-wrap {\n    flex-shrink: 0;\n    width: 96px;\n\
+        \    height: 96px;\n    filter: drop-shadow(0 3px 10px {{ water_glow }});\n  }\n\n  .plf-water-info\
+        \ { flex: 1; }\n\n  .plf-water-pct {\n    font-size: 42px;\n    font-weight: 700;\n    color:\
+        \ #e8f4ff;\n    line-height: 1;\n    letter-spacing: -1.5px;\n  }\n\n  .plf-water-pct span {\n\
+        \    font-size: 18px;\n    font-weight: 400;\n    color: {{ water_color }};\n    opacity: 0.85;\n\
+        \    margin-left: 2px;\n  }\n\n  .plf-water-label {\n    font-size: 12px;\n    color: rgba(255,255,255,0.6);\n\
+        \    margin-top: 3px;\n  }\n\n  .plf-bar-track {\n    width: 100%;\n    height: 5px;\n    border-radius:\
+        \ 3px;\n    background: rgba(255,255,255,0.15);\n    margin-top: 10px;\n    overflow: hidden;\n\
+        \  }\n\n  .plf-bar-fill {\n    height: 100%;\n    border-radius: 3px;\n    background: linear-gradient(90deg,\
+        \ {{ water_color }}, {{ water_color }}cc);\n    width: {{ water_pct }}%;\n    transition: width\
+        \ 1.5s cubic-bezier(0.22, 1, 0.36, 1);\n  }\n\n  /* ── stats — uses HA theme vars for light/dark\
+        \ ── */\n  .plf-stats {\n    padding: 16px 18px;\n    display: grid;\n    grid-template-columns:\
+        \ 1fr 1fr;\n    gap: 10px;\n  }\n\n  .plf-tile {\n    background: var(--secondary-background-color,\
+        \ #f5f5f5);\n    border: 1px solid var(--divider-color, #e0e0e0);\n    border-radius: 14px;\n\
+        \    padding: 13px 14px;\n  }\n\n  .plf-tile.hl {\n    background: rgba(56,182,255,0.08);\n  \
+        \  border-color: rgba(56,182,255,0.25);\n  }\n\n  .plf-tile-icon {\n    width: 18px;\n    height:\
+        \ 18px;\n    margin-bottom: 6px;\n    opacity: 0.7;\n  }\n\n  .plf-tile-val {\n    font-size:\
+        \ 21px;\n    font-weight: 600;\n    color: var(--primary-text-color, #212121);\n    line-height:\
+        \ 1.1;\n  }\n\n  .plf-tile-val .u {\n    font-size: 11px;\n    font-weight: 400;\n    color: var(--secondary-text-color,\
+        \ #727272);\n    margin-left: 3px;\n  }\n\n  .plf-tile-lbl {\n    font-size: 10.5px;\n    color:\
+        \ var(--secondary-text-color, #727272);\n    margin-top: 3px;\n    line-height: 1.3;\n  }\n\n\
+        \  /* ── comparison ── */\n  .plf-comp {\n    padding: 0 18px 18px;\n  }\n\n  .plf-comp-bar {\n\
+        \    background: var(--secondary-background-color, #f5f5f5);\n    border: 1px solid var(--divider-color,\
+        \ #e0e0e0);\n    border-radius: 14px;\n    padding: 12px 16px;\n    display: flex;\n    align-items:\
+        \ center;\n    justify-content: space-between;\n  }\n\n  .plf-comp-left {\n    display: flex;\n\
+        \    align-items: center;\n    gap: 10px;\n  }\n\n  .plf-comp-icon {\n    width: 30px;\n    height:\
+        \ 30px;\n    border-radius: 8px;\n    background: rgba(52,211,153,0.12);\n    display: flex;\n\
+        \    align-items: center;\n    justify-content: center;\n  }\n\n  .plf-comp-lbl {\n    font-size:\
+        \ 11px;\n    color: var(--secondary-text-color, #727272);\n  }\n\n  .plf-comp-val {\n    font-size:\
+        \ 13.5px;\n    font-weight: 500;\n    color: var(--primary-text-color, #212121);\n  }\n\n  .plf-comp-change\
+        \ {\n    font-size: 12.5px;\n    font-weight: 600;\n    display: flex;\n    align-items: center;\n\
+        \    gap: 2px;\n  }\n\n  .plf-up { color: #16a34a; }\n  .plf-down { color: #dc2626; }\n  .plf-flat\
+        \ { color: var(--secondary-text-color, #727272); }\n\n  /* ── SVG animations ── */\n  @keyframes\
+        \ plf-flow {\n    0% { transform: translateY(0); }\n    50% { transform: translateY(-2px); }\n\
+        \    100% { transform: translateY(0); }\n  }\n  .plf-stream { animation: plf-flow 2s ease-in-out\
+        \ infinite; }\n\n  @keyframes plf-ripple {\n    0% { r: 2; opacity: 0.5; }\n    100% { r: 12;\
+        \ opacity: 0; }\n  }\n  .plf-rip {\n    animation: plf-ripple 2.5s ease-out infinite;\n  }\n \
+        \ .plf-rip:nth-child(2) { animation-delay: 0.8s; }\n  .plf-rip:nth-child(3) { animation-delay:\
+        \ 1.6s; }\n</style>\n\n<div class=\"plf-card\">\n\n  <!-- HEADER -->\n  <div class=\"plf-header\"\
+        >\n    <div class=\"plf-header-top\">\n      <span class=\"plf-device-label\">Petlibro Fountain</span>\n\
+        \      <div class=\"plf-status-dot\"></div>\n    </div>\n    <div class=\"plf-fountain-area\"\
+        >\n      <div class=\"plf-svg-wrap\">\n        <svg viewBox=\"0 0 100 100\" xmlns=\"http://www.w3.org/2000/svg\"\
+        >\n          <ellipse cx=\"50\" cy=\"78\" rx=\"38\" ry=\"10\" fill=\"#1a3a52\" stroke=\"#2a6090\"\
+        \ stroke-width=\"0.8\"/>\n          <path d=\"M12 78 Q12 60 22 56 L78 56 Q88 60 88 78 Z\" fill=\"\
+        #15304a\" stroke=\"#2a6090\" stroke-width=\"0.8\"/>\n          <ellipse cx=\"50\" cy=\"72\" rx=\"\
+        32\" ry=\"7\" fill=\"#1a5a8a\" opacity=\"0.5\"/>\n          <ellipse cx=\"50\" cy=\"71\" rx=\"\
+        28\" ry=\"5.5\" fill=\"{{ water_color }}\" opacity=\"0.25\"/>\n          <circle class=\"plf-rip\"\
+        \ cx=\"50\" cy=\"71\" r=\"4\" fill=\"none\" stroke=\"{{ water_color }}\" stroke-width=\"0.5\"\
+        \ opacity=\"0.4\"/>\n          <circle class=\"plf-rip\" cx=\"50\" cy=\"71\" r=\"4\" fill=\"none\"\
+        \ stroke=\"{{ water_color }}\" stroke-width=\"0.5\" opacity=\"0.4\"/>\n          <circle class=\"\
+        plf-rip\" cx=\"50\" cy=\"71\" r=\"4\" fill=\"none\" stroke=\"{{ water_color }}\" stroke-width=\"\
+        0.5\" opacity=\"0.4\"/>\n          <rect x=\"46\" y=\"38\" width=\"8\" height=\"24\" rx=\"3\"\
+        \ fill=\"#1e4565\" stroke=\"#2a6090\" stroke-width=\"0.6\"/>\n          <ellipse cx=\"50\" cy=\"\
+        38\" rx=\"12\" ry=\"6\" fill=\"#1e4565\" stroke=\"#2a6090\" stroke-width=\"0.8\"/>\n         \
+        \ <ellipse cx=\"50\" cy=\"36\" rx=\"8\" ry=\"4\" fill=\"#1a3a52\" stroke=\"#2a6090\" stroke-width=\"\
+        0.5\"/>\n          <g class=\"plf-stream\">\n            <path d=\"M42 40 Q40 52 36 62\" stroke=\"\
+        {{ water_color }}\" stroke-width=\"1.2\" fill=\"none\" opacity=\"0.6\" stroke-linecap=\"round\"\
+        />\n            <path d=\"M58 40 Q60 52 64 62\" stroke=\"{{ water_color }}\" stroke-width=\"1.2\"\
+        \ fill=\"none\" opacity=\"0.6\" stroke-linecap=\"round\"/>\n            <path d=\"M39 42 Q35 54\
+        \ 30 66\" stroke=\"{{ water_color }}\" stroke-width=\"0.8\" fill=\"none\" opacity=\"0.3\" stroke-linecap=\"\
+        round\"/>\n            <path d=\"M61 42 Q65 54 70 66\" stroke=\"{{ water_color }}\" stroke-width=\"\
+        0.8\" fill=\"none\" opacity=\"0.3\" stroke-linecap=\"round\"/>\n          </g>\n          <g class=\"\
+        plf-stream\" style=\"animation-delay: 0.3s;\">\n            <path d=\"M50 36 Q49 28 50 22\" stroke=\"\
+        {{ water_color }}\" stroke-width=\"1.5\" fill=\"none\" opacity=\"0.45\" stroke-linecap=\"round\"\
+        />\n            <circle cx=\"50\" cy=\"21\" r=\"1.5\" fill=\"{{ water_color }}\" opacity=\"0.35\"\
+        />\n          </g>\n          <circle cx=\"38\" cy=\"68\" r=\"0.8\" fill=\"#fff\" opacity=\"0.35\"\
+        />\n          <circle cx=\"62\" cy=\"70\" r=\"0.6\" fill=\"#fff\" opacity=\"0.25\"/>\n       \
+        \   <circle cx=\"50\" cy=\"34\" r=\"0.7\" fill=\"#fff\" opacity=\"0.4\"/>\n        </svg>\n  \
+        \    </div>\n      <div class=\"plf-water-info\">\n        <div class=\"plf-water-pct\">{{ water_pct\
+        \ | round(0) | int }}<span>%</span></div>\n        <div class=\"plf-water-label\">Remaining Water</div>\n\
+        \        <div class=\"plf-bar-track\">\n          <div class=\"plf-bar-fill\"></div>\n       \
+        \ </div>\n      </div>\n    </div>\n  </div>\n\n  <!-- STATS -->\n  <div class=\"plf-stats\">\n\
+        \n    <div class=\"plf-tile hl\">\n      <svg class=\"plf-tile-icon\" viewBox=\"0 0 20 20\" fill=\"\
+        none\">\n        <path d=\"M10 2 C10 2 4 9 4 13a6 6 0 0012 0c0-4-6-11-6-11z\" stroke=\"#38b6ff\"\
+        \ stroke-width=\"1.4\" fill=\"rgba(56,182,255,0.15)\"/>\n      </svg>\n      <div class=\"plf-tile-val\"\
+        >{{ today_consumption | round(0) | int }}<span class=\"u\">mL</span></div>\n      <div class=\"\
+        plf-tile-lbl\">Today's Consumption</div>\n    </div>\n\n    <div class=\"plf-tile\">\n      <svg\
+        \ class=\"plf-tile-icon\" viewBox=\"0 0 20 20\" fill=\"none\">\n        <circle cx=\"10\" cy=\"\
+        10\" r=\"7\" stroke=\"#64748b\" stroke-width=\"1.2\"/>\n        <path d=\"M10 6v4l3 2\" stroke=\"\
+        #64748b\" stroke-width=\"1.3\" stroke-linecap=\"round\"/>\n      </svg>\n      <div class=\"plf-tile-val\"\
+        >{{ today_avg_time | round(0) | int }}<span class=\"u\">s</span></div>\n      <div class=\"plf-tile-lbl\"\
+        >Avg Drinking Time</div>\n    </div>\n\n    <div class=\"plf-tile\">\n      <svg class=\"plf-tile-icon\"\
+        \ viewBox=\"0 0 20 20\" fill=\"none\">\n        <rect x=\"3\" y=\"9\" width=\"2.5\" height=\"\
+        7\" rx=\"1\" fill=\"#94a3b8\"/>\n        <rect x=\"7.25\" y=\"6\" width=\"2.5\" height=\"10\"\
+        \ rx=\"1\" fill=\"#94a3b8\"/>\n        <rect x=\"11.5\" y=\"4\" width=\"2.5\" height=\"12\" rx=\"\
+        1\" fill=\"#94a3b8\"/>\n        <rect x=\"15.75\" y=\"7\" width=\"2.5\" height=\"9\" rx=\"1\"\
+        \ fill=\"#94a3b8\"/>\n      </svg>\n      <div class=\"plf-tile-val\">{{ today_times | round(0)\
+        \ | int }}<span class=\"u\">times</span></div>\n      <div class=\"plf-tile-lbl\">Drinking Sessions</div>\n\
+        \    </div>\n\n    <div class=\"plf-tile\">\n      <svg class=\"plf-tile-icon\" viewBox=\"0 0\
+        \ 20 20\" fill=\"none\">\n        <path d=\"M3 14 L7 8 L11 11 L17 4\" stroke=\"#64748b\" stroke-width=\"\
+        1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n      </svg>\n      <div class=\"\
+        plf-tile-val\">{{ total_min }}<span class=\"u\">min</span></div>\n      <div class=\"plf-tile-lbl\"\
+        >Total Drinking Time</div>\n    </div>\n\n  </div>\n\n  <!-- SAME-TIME-YESTERDAY COMPARISON -->\n\
+        \  <div class=\"plf-comp\">\n    <div class=\"plf-comp-bar\">\n      <div class=\"plf-comp-left\"\
+        >\n        <div class=\"plf-comp-icon\">\n          <svg width=\"15\" height=\"15\" viewBox=\"\
+        0 0 16 16\" fill=\"none\">\n            <path d=\"M8 1 C8 1 3 6.5 3 9.5a5 5 0 0010 0C13 6.5 8\
+        \ 1 8 1z\" stroke=\"#34d399\" stroke-width=\"1.2\" fill=\"rgba(52,211,153,0.15)\"/>\n        \
+        \  </svg>\n        </div>\n        <div>\n          <div class=\"plf-comp-lbl\">Yesterday by now</div>\n\
+        \          <div class=\"plf-comp-val\">{{ yesterday_at_now | round(0) | int }} mL · {{ yesterday_times_at_now\
+        \ | round(0) | int }} sessions</div>\n        </div>\n      </div>\n      <div class=\"plf-comp-change\
+        \ {% if change_pct > 0 %}plf-up{% elif change_pct < 0 %}plf-down{% else %}plf-flat{% endif %}\"\
+        >\n        {% if change_pct > 0 %}\n          <svg width=\"11\" height=\"11\" viewBox=\"0 0 12\
+        \ 12\" fill=\"none\">\n            <path d=\"M6 9V3M6 3L3 6M6 3l3 3\" stroke=\"currentColor\"\
+        \ stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n          </svg>\n\
+        \          +{{ change_pct }}%\n        {% elif change_pct < 0 %}\n          <svg width=\"11\"\
+        \ height=\"11\" viewBox=\"0 0 12 12\" fill=\"none\">\n            <path d=\"M6 3v6M6 9L3 6M6 9l3-3\"\
+        \ stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"\
+        />\n          </svg>\n          {{ change_pct }}%\n        {% else %}\n          —\n        {%\
+        \ endif %}\n      </div>\n    </div>\n  </div>\n\n</div>\n"
+    - type: custom:apexcharts-card
+      grid_options:
+        columns: full
+        rows: auto
+      header:
+        show: true
+        title: Water Consumption — Today vs Yesterday
+        show_states: true
+        colorize_states: true
+      graph_span: 24h
+      span:
+        start: day
+      yaxis:
+      - decimals: 0
+        apex_config:
+          title:
+            text: mL
+      series:
+      - entity: sensor.dockstream_smart_fountain_today_s_water_consumption
+        name: Today
+        type: line
+        stroke_width: 3
+        color: '#38b6ff'
+        group_by:
+          func: last
+          duration: 10min
+      - entity: sensor.dockstream_smart_fountain_today_s_water_consumption
+        name: Yesterday
+        type: line
+        stroke_width: 2
+        color: '#94a3b8'
+        offset: -1d
+        group_by:
+          func: last
+          duration: 10min
+    column_span: 2
+  - type: grid
+    cards:
+    - type: heading
+      heading: New section
+    column_span: 2
+  - type: grid
+    cards:
+    - type: heading
+      heading: New section
+    - graph: line
+      type: sensor
+      entity: sensor.alpstuga_air_quality_monitor_carbon_dioxide
+      detail: 1
+      grid_options:
+        columns: 18
+        rows: 4
+      name:
+        type: entity
+    - graph: line
+      type: sensor
+      entity: sensor.alpstuga_air_quality_monitor_pm2_5
+      detail: 1
+      name:
+        type: entity
+      grid_options:
+        columns: 18
+        rows: 4
+    column_span: 4

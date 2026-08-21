@@ -1,6 +1,85 @@
-# Home Assistant Custom Components
+# Home Assistant
 
-Custom blueprints and cards for Home Assistant.
+Source of truth for my Home Assistant setup: dashboards, custom cards and
+blueprints. Dashboards are validated on every pull request and deployed to Home
+Assistant by GitHub Actions on every push to `main`.
+
+```
+dashboards/          dashboard configs + the manifest that maps them to HA
+scripts/ha.py        deploy / entity-lookup / validate CLI
+docs/SETUP.md        credentials, GitHub secrets, reverse-proxy notes
+docs/ENTITIES.md     every entity ID this repo depends on
+.github/workflows/   the deploy pipeline
+```
+
+**Start here:** [docs/SETUP.md](docs/SETUP.md).
+
+## Dashboards
+
+### Home
+
+`dashboards/home.yaml` — phone-first, three views, deployed over the dashboard
+at `dashboard-general`.
+
+**Home** — the at-a-glance view:
+
+- **Climate** — one row per room (Living Room, Kitchen, Bedroom, Babyroom,
+  Bath, Hall), each heading carrying its temperature and humidity as inline
+  badges, so six rooms take six lines. 24-hour history graphs below.
+- **Cat Fountain** — just the water level, via
+  `petlibro-water-level-card.yaml`.
+- **Air Quality** — CO₂ and PM2.5 line graphs from the Alpstuga monitor.
+
+**Fountain** — the detail: the `html-template-card` stat card and the
+`apexcharts` today-vs-yesterday chart.
+
+**Buttons** — the light and switch buttons.
+
+The three custom cards are pulled in with `!include` from the maintained copies
+at the repo root, so the standalone versions and the dashboard can't drift
+apart. That means this dashboard needs `html-template-card` and
+`apexcharts-card` from HACS.
+
+This dashboard was merged from two older ones. `dashboard-giacomo`, which
+renders the Kindle Dashboard, is deliberately left out of the manifest and is
+never written to. Pre-merge snapshots of everything live in
+`dashboards/_pulled/`.
+
+### Deploying
+
+One-time setup:
+
+```sh
+python3 -m venv venv
+./venv/bin/pip install -r scripts/requirements.txt
+```
+
+Then, per shell:
+
+```sh
+export HA_URL=https://ha.example.com
+export HA_TOKEN=...
+```
+
+| Command | Does |
+|---|---|
+| `python3 scripts/ha.py validate` | Parse the YAML offline; no credentials needed |
+| `python3 scripts/ha.py dashboards` | List what's in HA and which ones this repo owns |
+| `python3 scripts/ha.py pull` | Snapshot live configs to `dashboards/_pulled/` |
+| `python3 scripts/ha.py entities fountain` | Look up entity IDs |
+| `python3 scripts/ha.py deploy --dry-run` | Check entities without writing |
+| `python3 scripts/ha.py deploy` | Push for real |
+
+`scripts/ha.py` re-runs itself under `venv/` automatically, so plain `python3`
+is correct regardless of what's on your `PATH`.
+
+Only dashboards listed in `dashboards/dashboards.yaml` are deployed; everything
+else in your instance is left alone. See
+[docs/SETUP.md §0](docs/SETUP.md) for keeping or merging existing dashboards.
+
+In CI the same `deploy` step runs with `HA_URL` and `HA_TOKEN` repository
+secrets. Deploys overwrite the live dashboard, so edit the YAML here rather than
+in the HA UI.
 
 ## Custom Cards
 
@@ -52,6 +131,19 @@ A styled card for a Petlibro / Dockstream smart water fountain. Shows remaining 
 Ex:   
 <img width="298" height="526" alt="Screenshot 2026-08-02 at 17 26 07" src="https://github.com/user-attachments/assets/6c9f8f80-aa3c-4d50-96a6-2b314042a540" />
 
+### Petlibro Water Level Card
+
+A deliberately minimal companion to the card above: the percentage, a status
+word (Good / Top up soon / Refill now) and a colour-coded bar. Intended for an
+overview dashboard where the full stat card would be too much.
+
+**Requires:** the `html-template-card` custom card (installable via HACS).
+
+Thresholds match `petlibro-fountain-card.yaml` — above 50 % blue, above 25 %
+amber, below that red. Keep the two in sync if you change one.
+
+**Sensors used:**
+- `sensor.dockstream_smart_fountain_remaining_water_2`
 
 ### Petlibro Fountain Chart Card
 

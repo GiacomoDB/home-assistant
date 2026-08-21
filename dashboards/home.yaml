@@ -1,0 +1,270 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Home Dashboard — phone-first. Three views: Home, Fountain, Buttons.
+#
+# Merged from the dashboards that used to be separate:
+#   dashboard-general  → the Air Quality and Cat Fountain cards
+#   dashboard-giacomo  → the Buttons view
+# `dashboard-giacomo` itself is NOT managed by this repo and is never written
+# to — the Kindle Dashboard view there stays exactly as it is.
+#
+# Deployed by .github/workflows/deploy-dashboards.yml on every push to main.
+# Edit this file, not the HA UI — a deploy overwrites whatever is live.
+# See docs/SETUP.md for credentials and docs/ENTITIES.md for the entity list.
+#
+# Icons are mdi:circle placeholders except where an icon was already chosen in
+# the dashboard this content came from — swap them manually.
+# ─────────────────────────────────────────────────────────────────────────────
+
+views:
+  # ═══════════════════════════════ HOME ═══════════════════════════════
+  - title: Home
+    path: home
+    icon: mdi:circle
+    type: sections
+    max_columns: 2
+    dense_section_placement: true
+
+    badges:
+      - type: entity
+        entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
+        name: Living Room
+        icon: mdi:circle
+        color: red
+      - type: entity
+        entity: sensor.dockstream_smart_fountain_remaining_water_2
+        name: Fountain
+        icon: mdi:circle
+        color: cyan
+      - type: entity
+        entity: sensor.alpstuga_air_quality_monitor_carbon_dioxide
+        name: CO₂
+        icon: mdi:circle
+        color: green
+
+    sections:
+      # ───────────────────────────── CLIMATE ─────────────────────────────
+      # One row per room: the heading carries both readings as badges, so six
+      # rooms fit in six lines instead of six headings plus twelve tiles.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Climate
+            heading_style: title
+            icon: mdi:circle
+
+          - type: heading
+            heading: Living Room
+            heading_style: subtitle
+            icon: mdi:circle
+            badges:
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
+                icon: mdi:circle
+                color: red
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_humidity_4
+                icon: mdi:circle
+                color: blue
+
+          - type: heading
+            heading: Kitchen
+            heading_style: subtitle
+            icon: mdi:circle
+            badges:
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_temperature
+                icon: mdi:circle
+                color: red
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_humidity
+                icon: mdi:circle
+                color: blue
+
+          - type: heading
+            heading: Bedroom
+            heading_style: subtitle
+            icon: mdi:circle
+            badges:
+              - type: entity
+                entity: sensor.alpstuga_air_quality_monitor_temperature
+                icon: mdi:circle
+                color: red
+              - type: entity
+                entity: sensor.alpstuga_air_quality_monitor_humidity
+                icon: mdi:circle
+                color: blue
+
+          - type: heading
+            heading: Babyroom
+            heading_style: subtitle
+            icon: mdi:circle
+            badges:
+              - type: entity
+                entity: sensor.babyroom_babyroom_temperature
+                icon: mdi:circle
+                color: red
+              - type: entity
+                entity: sensor.babyroom_babyroom_humidity
+                icon: mdi:circle
+                color: blue
+
+          - type: heading
+            heading: Bath
+            heading_style: subtitle
+            icon: mdi:circle
+            badges:
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
+                icon: mdi:circle
+                color: red
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_humidity_5
+                icon: mdi:circle
+                color: blue
+
+          - type: heading
+            heading: Hall
+            heading_style: subtitle
+            icon: mdi:circle
+            badges:
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
+                icon: mdi:circle
+                color: red
+              - type: entity
+                entity: sensor.timmerflotte_temp_hmd_sensor_humidity_3
+                icon: mdi:circle
+                color: blue
+
+          - type: heading
+            heading: Last 24 Hours
+            heading_style: subtitle
+            icon: mdi:circle
+          - type: history-graph
+            hours_to_show: 24
+            entities:
+              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
+                name: Living Room
+              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature
+                name: Kitchen
+              - entity: sensor.alpstuga_air_quality_monitor_temperature
+                name: Bedroom
+              - entity: sensor.babyroom_babyroom_temperature
+                name: Babyroom
+              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
+                name: Bath
+              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
+                name: Hall
+            grid_options: { columns: full }
+          - type: history-graph
+            hours_to_show: 24
+            entities:
+              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_4
+                name: Living Room
+              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity
+                name: Kitchen
+              - entity: sensor.alpstuga_air_quality_monitor_humidity
+                name: Bedroom
+              - entity: sensor.babyroom_babyroom_humidity
+                name: Babyroom
+              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_5
+                name: Bath
+              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_3
+                name: Hall
+            grid_options: { columns: full }
+
+      # ─────────────────────────── CAT FOUNTAIN ──────────────────────────
+      # Just the level here — the detailed stats and chart are on the
+      # Fountain view.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Cat Fountain
+            heading_style: title
+            icon: mdi:circle
+          - !include ../petlibro-water-level-card.yaml
+
+      # ─────────────────────────── AIR QUALITY ───────────────────────────
+      # Carried over from dashboard-general. The original grid_options used
+      # `columns: 18`, which only made sense in that view's 4-column layout;
+      # normalised to full width here.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Air Quality
+            heading_style: title
+            icon: mdi:circle
+          - type: sensor
+            entity: sensor.alpstuga_air_quality_monitor_carbon_dioxide
+            graph: line
+            detail: 1
+            name: { type: entity }
+            grid_options: { columns: full, rows: 4 }
+          - type: sensor
+            entity: sensor.alpstuga_air_quality_monitor_pm2_5
+            graph: line
+            detail: 1
+            name: { type: entity }
+            grid_options: { columns: full, rows: 4 }
+
+  # ══════════════════════════════ FOUNTAIN ════════════════════════════
+  # Both cards are pulled straight from the maintained copies at the repo
+  # root, so the standalone versions and this dashboard can't drift apart.
+  # They need html-template-card and apexcharts-card from HACS.
+  - title: Fountain
+    path: fountain
+    icon: mdi:circle
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - !include ../petlibro-fountain-card.yaml
+          - !include ../petlibro-fountain-chart-card.yaml
+
+  # ═════════════════════════════ BUTTONS ══════════════════════════════
+  # Copied from dashboard-giacomo. The two placeholder "New section"
+  # headings and the trailing empty section were dropped.
+  - title: Buttons
+    path: buttons
+    icon: mdi:gesture-tap-button
+    type: sections
+    max_columns: 4
+    sections:
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Lights
+            heading_style: title
+            icon: mdi:circle
+          - type: button
+            entity: switch.big_light
+            show_name: true
+            show_icon: true
+            show_state: true
+            grid_options: { columns: 6, rows: 3 }
+          - type: button
+            entity: switch.tree
+            color: green
+            show_name: true
+            show_icon: true
+            show_state: true
+            grid_options: { columns: 6, rows: 3 }
+          - type: button
+            entity: switch.kettelinch
+            show_name: true
+            show_icon: true
+            show_state: true
+            grid_options: { columns: 6, rows: 3 }
+          - type: button
+            entity: switch.lampadina
+            show_name: true
+            show_icon: true
+            show_state: true
+            grid_options: { columns: 6, rows: 3 }
+          - type: light
+            entity: light.kajplats_e27_ws_globe_1521lm
+          - type: light
+            entity: light.kajplats_e14_ws_globe_806lm

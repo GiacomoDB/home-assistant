@@ -1,0 +1,7 @@
+# Snapshot of the 'Overview' dashboard as it
+# exists in Home Assistant (url_path: 'lovelace').
+#
+# Not deployed -- only dashboards listed in ../dashboards.yaml are.
+# Pulled with: python scripts/ha.py pull
+
+views: []

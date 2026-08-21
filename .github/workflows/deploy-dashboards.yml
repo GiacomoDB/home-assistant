@@ -1,0 +1,67 @@
+name: Deploy dashboards
+
+# Pushes everything in dashboards/ into Home Assistant whenever main changes.
+# Pull requests only get the offline validation job -- no secrets, no writes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dashboards/**"
+      - "scripts/**"
+      - ".github/workflows/deploy-dashboards.yml"
+  pull_request:
+    paths:
+      - "dashboards/**"
+      - "scripts/**"
+      - ".github/workflows/deploy-dashboards.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Connect and check entities, but don't write"
+        type: boolean
+        default: false
+
+# Never let two deploys race to overwrite the same dashboard.
+concurrency:
+  group: ha-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - run: pip install -r scripts/requirements.txt
+      - run: python scripts/ha.py validate
+
+  deploy:
+    name: Deploy to Home Assistant
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - run: pip install -r scripts/requirements.txt
+      - name: Deploy
+        env:
+          HA_URL: ${{ secrets.HA_URL }}
+          HA_TOKEN: ${{ secrets.HA_TOKEN }}
+          # Only needed if a Cloudflare Access policy fronts the tunnel.
+          # Unset secrets arrive as empty strings and are ignored.
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          python scripts/ha.py deploy \
+            ${{ inputs.dry_run && '--dry-run' || '' }}

@@ -1,0 +1,237 @@
+# Snapshot of the 'Giacomo' dashboard as it
+# exists in Home Assistant (url_path: 'dashboard-giacomo').
+#
+# Not deployed -- only dashboards listed in ../dashboards.yaml are.
+# Pulled with: python scripts/ha.py pull
+
+views:
+- type: sections
+  title: Kindle Dashboard
+  max_columns: 2
+  sections:
+  - type: grid
+    cards:
+    - clock_style: digital
+      clock_size: medium
+      show_seconds: false
+      no_background: true
+      type: clock
+      grid_options:
+        columns: 24
+        rows: 1
+      face_style: markers
+    - type: custom:eink-sensor-card
+      entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
+      unit: °C
+      name: Living R
+      value_font_size: 60
+      unit_font_size: 25
+      label_font_size: 25
+      grid_options:
+        columns: 4
+        rows: 3.2
+    - type: custom:eink-sensor-card
+      entity: sensor.timmerflotte_temp_hmd_sensor_temperature
+      unit: °C
+      name: Kitchen
+      value_font_size: 60
+      unit_font_size: 25
+      label_font_size: 25
+      grid_options:
+        columns: 4
+        rows: 3.2
+    - type: custom:eink-sensor-card
+      entity: sensor.babyroom_babyroom_temperature
+      unit: °C
+      name: BabyR
+      value_font_size: 60
+      unit_font_size: 25
+      label_font_size: 25
+      grid_options:
+        columns: 4
+        rows: 3.2
+    - type: custom:eink-sensor-card
+      entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
+      unit: °C
+      name: Bath
+      value_font_size: 60
+      unit_font_size: 25
+      label_font_size: 25
+      grid_options:
+        columns: 4
+        rows: 3.2
+    - type: custom:eink-sensor-card
+      entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
+      unit: °C
+      name: Hall
+      value_font_size: 60
+      unit_font_size: 25
+      label_font_size: 25
+      grid_options:
+        columns: 4
+        rows: 3.2
+    - type: custom:eink-sensor-card
+      entity: sensor.alpstuga_air_quality_monitor_temperature
+      unit: °C
+      name: Bedroom
+      value_font_size: 60
+      unit_font_size: 25
+      label_font_size: 25
+      grid_options:
+        columns: 4
+        rows: 3.2
+    column_span: 2
+  - type: grid
+    cards:
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.timmerflotte_temp_hmd_sensor_temperature_4
+      name: LIVING ROOM
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.timmerflotte_temp_hmd_sensor_humidity_4
+      name: LIVING ROOM
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.alpstuga_air_quality_monitor_temperature
+      name: BEDROOM
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.alpstuga_air_quality_monitor_humidity
+      name: BEDROOM
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.timmerflotte_temp_hmd_sensor_temperature
+      name: Kitchen
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.timmerflotte_temp_hmd_sensor_humidity
+      name: Kitchen
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.babyroom_babyroom_temperature
+      name: Babyroom
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    - type: custom:mini-graph-card
+      entities:
+      - sensor.babyroom_babyroom_humidity
+      name: Babyroom
+      hours_to_show: 24
+      points_per_hour: 1
+      line_color: '#00000'
+      line_width: 6
+      font_size: 130
+      grid_options:
+        columns: 12
+        rows: 3.8
+    column_span: 2
+  header: {}
+  dense_section_placement: false
+  cards: []
+- type: sections
+  max_columns: 4
+  title: Buttons
+  path: buttons
+  icon: mdi:gesture-tap-button
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: New section
+    - show_name: true
+      show_icon: true
+      type: button
+      entity: switch.big_light
+      show_state: true
+      grid_options:
+        columns: 6
+        rows: 3
+    - show_name: true
+      show_icon: true
+      type: button
+      entity: switch.tree
+      color: green
+      show_state: true
+      grid_options:
+        columns: 6
+        rows: 3
+    - show_name: true
+      show_icon: true
+      type: button
+      entity: switch.kettelinch
+      show_state: true
+      grid_options:
+        columns: 6
+        rows: 3
+    - show_name: true
+      show_icon: true
+      type: button
+      entity: switch.lampadina
+      show_state: true
+      grid_options:
+        columns: 6
+        rows: 3
+    - type: light
+      entity: light.kajplats_e27_ws_globe_1521lm
+    - type: light
+      entity: light.kajplats_e14_ws_globe_806lm
+    column_span: 3
+  - type: grid
+    cards:
+    - type: heading
+      heading: New section

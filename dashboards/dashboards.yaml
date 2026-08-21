@@ -1,0 +1,23 @@
+# Manifest of every dashboard this repo owns.
+#
+# `scripts/ha.py deploy` reads this file and pushes each entry into Home
+# Assistant. Add a new dashboard by dropping its YAML in this folder and
+# adding a row here.
+#
+#   file:      path to the dashboard YAML, relative to this folder
+#   url_path:  the dashboard's URL slug in HA (Settings → Dashboards → the
+#              "URL" column). Omit or set to null to target the *default*
+#              "Overview" dashboard.
+#   title:     human label, only used in deploy logs
+#
+# NOT listed here, and therefore never written to:
+#   dashboard-giacomo   the Kindle Dashboard — stays exactly as it is
+#   lovelace / Overview both empty
+#
+# `home.yaml` deploys over `dashboard-general`, which it replaces: its Cat
+# Fountain and Air Quality cards were merged in, so the old contents are gone
+# by design. The pre-merge snapshot is in _pulled/dashboard-general.yaml.
+
+- file: home.yaml
+  url_path: dashboard-general
+  title: Home
