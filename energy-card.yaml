@@ -1,0 +1,158 @@
+# Today's electricity: cost, usage and unit rate, in the same 3-across grid as
+# the climate card so the two read as one design.
+#
+# Source is the Hildebrand Glow (DCC) integration — DCC data arrives on roughly
+# a half-hour delay and the daily figures reset at midnight, so this answers
+# "how am I doing today", not "what just switched on". Nothing here reacts to
+# an individual appliance, and it cannot.
+#
+# Units come from each entity's own `unit_of_measurement` rather than being
+# hardcoded, because the Glow rate has been reported both as p/kWh and GBP/kWh
+# depending on version — reading the attribute means the card cannot disagree
+# with the sensor. Cost is the exception: it is rendered with a £ sign, since
+# the raw unit is the string "GBP".
+#
+# The rate and standing charge are converted to pence when they arrive in GBP
+# and are under £1, because that is how UK tariffs are quoted and because
+# rounding 0.2431 GBP/kWh to two places gives a meaningless "0.24".
+#
+# The standing charge is a footnote rather than a cell: it is a fixed daily
+# amount you cannot influence, but without it the cost looks wrong on a low-use
+# day, so it earns a mention and not a quarter of the card.
+#
+# Requires html-template-card (HACS).
+
+type: custom:html-template-card
+title: ""
+ignore_line_breaks: true
+content: >
+  {% set cost = 'sensor.electricity_meter_cost_today' %}
+  {% set usage = 'sensor.electricity_meter_usage_today' %}
+  {% set rate = 'sensor.dcc_sourced_smart_electricity_meter_rate' %}
+  {% set standing = 'sensor.dcc_sourced_smart_electricity_meter_standing_charge' %}
+
+  {#- Glow reports the unit rate and standing charge in GBP, so a typical rate
+      arrives as 0.2431 and rounds to a useless "0.24". UK bills quote both in
+      PENCE, so anything under £1 in a GBP unit is shown as pence: 24.31p/kWh,
+      60.12p/day. Guarded on the unit and on being under 1, so a tariff genuinely
+      priced above £1/kWh, or a non-GBP unit, is left exactly as the sensor
+      reports it rather than being silently multiplied by 100. -#}
+  {% macro pence(entity) %}
+    {%- set unit = state_attr(entity, 'unit_of_measurement') or '' -%}
+    {%- set value = states(entity) | float -%}
+    {%- if 'GBP' in unit and value < 1 -%}
+      {{- (value * 100) | round(2) }}<i>{{ unit | replace('GBP', 'p') }}</i>
+    {%- else -%}
+      {{- value | round(2) }}<i>{{ unit }}</i>
+    {%- endif -%}
+  {% endmacro %}
+
+  <style>
+    ha-card:has(.en-card) { background: none !important; box-shadow: none !important; border: none !important; }
+
+    .en-card {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--ha-card-background, var(--card-background-color, #fff));
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .en-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .en-cell {
+      padding: 9px 3px 10px;
+      text-align: center;
+      min-width: 0;
+      border-right: 1px solid var(--divider-color, #e0e0e0);
+    }
+
+    .en-cell:nth-child(3n) { border-right: none; }
+
+    .en-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      line-height: 1.3;
+      color: var(--secondary-text-color, #727272);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* tabular-nums stops the figures jittering sideways as they tick up */
+    .en-value {
+      font-size: 21px;
+      font-weight: 700;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      color: var(--primary-text-color, #212121);
+      margin-top: 3px;
+    }
+
+    .en-value.money { color: #2fa36b; }
+
+    .en-value i {
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 500;
+      opacity: 0.6;
+      margin-left: 1px;
+    }
+
+    .en-foot {
+      padding: 6px 11px 7px;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--secondary-text-color, #727272);
+      text-align: center;
+    }
+
+    .en-na { color: var(--secondary-text-color, #9e9e9e); font-weight: 400; }
+  </style>
+
+
+  <div class="en-card">
+    <div class="en-grid">
+      <div class="en-cell">
+        <div class="en-label">Cost today</div>
+        <div class="en-value money">
+          {%- if states(cost) | is_number -%}
+            £{{ states(cost) | float | round(2) }}
+          {%- else -%}
+            <span class="en-na">—</span>
+          {%- endif -%}
+        </div>
+      </div>
+      <div class="en-cell">
+        <div class="en-label">Used today</div>
+        <div class="en-value">
+          {%- if states(usage) | is_number -%}
+            {{ states(usage) | float | round(2) }}<i>{{ state_attr(usage, 'unit_of_measurement') or 'kWh' }}</i>
+          {%- else -%}
+            <span class="en-na">—</span>
+          {%- endif -%}
+        </div>
+      </div>
+      <div class="en-cell">
+        <div class="en-label">Unit rate</div>
+        <div class="en-value">
+          {%- if states(rate) | is_number -%}
+            {{ pence(rate) }}
+          {%- else -%}
+            <span class="en-na">—</span>
+          {%- endif -%}
+        </div>
+      </div>
+    </div>
+    {% if states(standing) | is_number %}
+      <div class="en-foot">
+        Includes a standing charge of {{ pence(standing) | replace('<i>', '') | replace('</i>', '') }} per day
+      </div>
+    {% endif %}
+  </div>

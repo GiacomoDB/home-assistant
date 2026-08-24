@@ -33,6 +33,8 @@ at `dashboard-general`.
   temperature strip on top. 24-hour statistics graphs below.
 - **Cat Fountain** — just the water level, via
   `petlibro-water-level-card.yaml`.
+- **Energy** — today's cost, usage and unit rate from the Hildebrand Glow (DCC)
+  smart meter feed via `energy-card.yaml`, plus 30 days of daily cost.
 - **Air Quality** — CO₂ and PM2.5 line graphs from the Alpstuga monitor.
 
 **Fountain** — the detail: the `html-template-card` stat card, the `apexcharts`
@@ -250,6 +252,25 @@ Entries match as substrings against the entity_id. The filter is per device
 rather than per value on purpose: hiding everything that reads exactly 0 would
 also hide a genuinely dead battery. See
 [docs/ENTITIES.md](docs/ENTITIES.md#batteries).
+
+### Energy Card
+
+`energy-card.yaml` — today's electricity cost, usage and unit rate from
+Hildebrand Glow (DCC), in the same 3-across grid as the climate card.
+
+**Requires:** the `html-template-card` custom card (installable via HACS).
+
+Units are read from each entity's `unit_of_measurement` rather than hardcoded,
+so the card cannot disagree with the sensor. The rate and standing charge are
+converted to pence when they arrive in GBP below £1 — a rate of `0.2431 GBP/kWh`
+rounds to a meaningless `0.24`, whereas `24.31p/kWh` is how UK tariffs are
+actually quoted. Guarded on both the unit and the magnitude, so a non-GBP unit
+or a genuinely above-£1 rate is left exactly as reported.
+
+The standing charge is a footnote rather than a fourth cell: it is fixed and you
+cannot influence it, but without it the daily cost looks wrong on a low-use day.
+
+**Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#energy--hildebrand-glow-dcc).
 
 ### Petlibro Fountain Card
 

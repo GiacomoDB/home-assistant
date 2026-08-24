@@ -139,6 +139,31 @@ reading this card most needs to show.
 
 ---
 
+## Energy — Hildebrand Glow (DCC)
+
+UK smart meter data over the DCC. **Electricity only** — no gas sensors exist on
+this account.
+
+| Entity ID | Unit | Meaning |
+|---|---|---|
+| `sensor.electricity_meter_cost_today` | GBP | Cost so far today, resets at midnight |
+| `sensor.electricity_meter_usage_today` | kWh | Usage so far today, resets at midnight |
+| `sensor.dcc_sourced_smart_electricity_meter_rate` | GBP/kWh | Unit rate |
+| `sensor.dcc_sourced_smart_electricity_meter_standing_charge` | GBP | Fixed daily charge |
+
+Two things to know about this data:
+
+- **It lags by roughly half an hour.** DCC delivers in batches, so nothing here
+  reacts to an appliance switching on, and no automation built on it can.
+- **The rate and standing charge arrive in GBP, not pence.** A typical rate is
+  `0.2431`, which rounds to a meaningless `0.24`. `energy-card.yaml` converts
+  anything under £1 in a GBP unit to pence, matching how UK tariffs are quoted.
+
+There is also `switch.hildebrand_glow_dcc_pre_release` and
+`update.hildebrand_glow_dcc_update`; neither is used by the dashboard.
+
+---
+
 ## Lights and switches — Buttons view
 
 | Entity ID | Notes |

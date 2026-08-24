@@ -155,6 +155,36 @@ views:
               icon: mdi:circle
             - !include ../petlibro-water-level-card.yaml
 
+            # ──────────────────────────── ENERGY ──────────────────────────
+            # Hildebrand Glow (DCC), electricity only. Today's figures in the
+            # card, then 30 days of daily totals.
+            #
+            # Same stat_types question as the fountain charts: HA stores
+            # min/max/mean for `state_class: measurement` and sum/state/change
+            # for total_increasing, never both, and asking for the wrong one
+            # renders an EMPTY chart with no error. Both are listed so whichever
+            # applies resolves; they are mutually exclusive, so no double bars.
+            # `python3 scripts/ha.py stats` prints which applies.
+            #
+            # Cost rather than usage: at a single unit rate the two curves are
+            # the same shape, and cost is the one that means anything. Swap the
+            # entity for sensor.electricity_meter_usage_today for kWh.
+            - type: heading
+              heading: Energy
+              heading_style: title
+              icon: mdi:circle
+            - !include ../energy-card.yaml
+            - type: statistics-graph
+              days_to_show: 30
+              period: day
+              chart_type: bar
+              stat_types:
+                - max
+                - change
+              entities:
+                - entity: sensor.electricity_meter_cost_today
+                  name: Cost per day
+
             # ────────────────────────── AIR QUALITY ───────────────────────
             # Carried over from dashboard-general.
             - type: heading
