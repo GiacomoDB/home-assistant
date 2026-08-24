@@ -7,6 +7,17 @@
 # `dashboard-giacomo` itself is NOT managed by this repo and is never written
 # to — the Kindle Dashboard view there stays exactly as it is.
 #
+# LAYOUT: every view is `type: panel`, which renders a single card edge-to-edge
+# at full width. Sections views cap each column at 500px and that cap is only
+# adjustable from a theme, so panel is how this gets full width with no theme
+# and no HACS dependency. Each view therefore holds exactly one vertical-stack
+# — a panel view shows only its first card.
+#
+# Consequence: `grid_options` (columns / rows) is a sections-view feature and
+# is ignored here. Multi-column layout inside a panel needs a `grid` card, as
+# the Buttons view does, and side margins come from card-mod on each stack —
+# panel views have almost none of their own.
+#
 # Deployed by .github/workflows/deploy-dashboards.yml on every push to main.
 # Edit this file, not the HA UI — a deploy overwrites whatever is live.
 # See docs/SETUP.md for credentials and docs/ENTITIES.md for the entity list.
@@ -20,10 +31,7 @@ views:
   - title: Home
     path: home
     icon: mdi:circle
-    type: sections
-    max_columns: 2
-    dense_section_placement: true
-
+    type: panel
     badges:
       - type: entity
         entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
@@ -40,172 +48,128 @@ views:
         name: CO₂
         icon: mdi:circle
         color: green
+    cards:
+      # mod-card wraps the stack in an ha-card we can pad, which insets every
+      # card inside it. Needed because panel views render edge-to-edge, and
+      # card-mod has no handling of its own for stacks or views.
+      - type: custom:mod-card
+        card_mod:
+          style: |
+            ha-card {
+              background: none;
+              border: none;
+              box-shadow: none;
+              padding: 0 12px;
+            }
+        card:
+          type: vertical-stack
+          cards:
+            # ──────────────────────────── CLOCK ───────────────────────────
+            # Built-in card (no HACS), rendered client-side so it ticks live
+            # rather than waiting on a state change. no_background drops the
+            # card surface so the time reads as a page header, not a tile.
+            - type: clock
+              clock_style: digital
+              clock_size: medium
+              no_background: true
 
-    sections:
-      # ───────────────────────────── CLIMATE ─────────────────────────────
-      # One row per room: the heading carries both readings as badges, so six
-      # rooms fit in six lines instead of six headings plus twelve tiles.
-      - type: grid
-        cards:
-          - type: heading
-            heading: Climate
-            heading_style: title
-            icon: mdi:circle
+            # ─────────────────────── LOW BATTERY ──────────────────────────
+            # Sits high on purpose: it hides itself entirely while every
+            # battery is healthy, so it only ever costs space when it has
+            # something to say. Discovers batteries by device_class rather
+            # than by a fixed entity list — see the card file.
+            - !include ../battery-alert-card.yaml
 
-          - type: heading
-            heading: Living Room
-            heading_style: subtitle
-            icon: mdi:circle
-            badges:
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
-                icon: mdi:circle
-                color: red
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_humidity_4
-                icon: mdi:circle
-                color: blue
+            # ─────────────────────────── CLIMATE ──────────────────────────
+            # Room readings are a single table card: room name, temperature and
+            # humidity in aligned columns with headers. Edit the room list
+            # inside climate-table-card.yaml to add or remove rooms.
+            - type: heading
+              heading: Climate
+              heading_style: title
+              icon: mdi:circle
+            - !include ../climate-table-card.yaml
 
-          - type: heading
-            heading: Kitchen
-            heading_style: subtitle
-            icon: mdi:circle
-            badges:
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_temperature
-                icon: mdi:circle
-                color: red
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_humidity
-                icon: mdi:circle
-                color: blue
+            # statistics-graph rather than history-graph. It plots long-term
+            # statistics instead of raw recorder states, so `stat_types: [mean]`
+            # gives one averaged point per bucket — six sensors on one chart
+            # without the sawtooth of every individual state change.
+            #
+            # `period: 5minute` is 288 points across the day, detailed but
+            # already smoothed. Safe at this range: HA keeps 5-minute
+            # statistics for recorder's purge_keep_days (10 by default) and
+            # hourly statistics forever, so widening days_to_show past that
+            # means switching to `period: hour`.
+            #
+            # Requires a `state_class` on every entity, otherwise the series is
+            # silently empty — check with `python3 scripts/ha.py stats`.
+            - type: heading
+              heading: Last 24 Hours
+              heading_style: subtitle
+              icon: mdi:circle
+            - type: statistics-graph
+              days_to_show: 1
+              period: 5minute
+              chart_type: line
+              stat_types:
+                - mean
+              entities:
+                - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
+                  name: Living Room
+                - entity: sensor.timmerflotte_temp_hmd_sensor_temperature
+                  name: Kitchen
+                - entity: sensor.alpstuga_air_quality_monitor_temperature
+                  name: Bedroom
+                - entity: sensor.babyroom_babyroom_temperature
+                  name: Babyroom
+                - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
+                  name: Bath
+                - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
+                  name: Hall
+            - type: statistics-graph
+              days_to_show: 1
+              period: 5minute
+              chart_type: line
+              stat_types:
+                - mean
+              entities:
+                - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_4
+                  name: Living Room
+                - entity: sensor.timmerflotte_temp_hmd_sensor_humidity
+                  name: Kitchen
+                - entity: sensor.alpstuga_air_quality_monitor_humidity
+                  name: Bedroom
+                - entity: sensor.babyroom_babyroom_humidity
+                  name: Babyroom
+                - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_5
+                  name: Bath
+                - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_3
+                  name: Hall
 
-          - type: heading
-            heading: Bedroom
-            heading_style: subtitle
-            icon: mdi:circle
-            badges:
-              - type: entity
-                entity: sensor.alpstuga_air_quality_monitor_temperature
-                icon: mdi:circle
-                color: red
-              - type: entity
-                entity: sensor.alpstuga_air_quality_monitor_humidity
-                icon: mdi:circle
-                color: blue
+            # ───────────────────────── CAT FOUNTAIN ───────────────────────
+            # Just the level here — stats and chart are on the Fountain view.
+            - type: heading
+              heading: Cat Fountain
+              heading_style: title
+              icon: mdi:circle
+            - !include ../petlibro-water-level-card.yaml
 
-          - type: heading
-            heading: Babyroom
-            heading_style: subtitle
-            icon: mdi:circle
-            badges:
-              - type: entity
-                entity: sensor.babyroom_babyroom_temperature
-                icon: mdi:circle
-                color: red
-              - type: entity
-                entity: sensor.babyroom_babyroom_humidity
-                icon: mdi:circle
-                color: blue
-
-          - type: heading
-            heading: Bath
-            heading_style: subtitle
-            icon: mdi:circle
-            badges:
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
-                icon: mdi:circle
-                color: red
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_humidity_5
-                icon: mdi:circle
-                color: blue
-
-          - type: heading
-            heading: Hall
-            heading_style: subtitle
-            icon: mdi:circle
-            badges:
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
-                icon: mdi:circle
-                color: red
-              - type: entity
-                entity: sensor.timmerflotte_temp_hmd_sensor_humidity_3
-                icon: mdi:circle
-                color: blue
-
-          - type: heading
-            heading: Last 24 Hours
-            heading_style: subtitle
-            icon: mdi:circle
-          - type: history-graph
-            hours_to_show: 24
-            entities:
-              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
-                name: Living Room
-              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature
-                name: Kitchen
-              - entity: sensor.alpstuga_air_quality_monitor_temperature
-                name: Bedroom
-              - entity: sensor.babyroom_babyroom_temperature
-                name: Babyroom
-              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
-                name: Bath
-              - entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
-                name: Hall
-            grid_options: { columns: full }
-          - type: history-graph
-            hours_to_show: 24
-            entities:
-              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_4
-                name: Living Room
-              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity
-                name: Kitchen
-              - entity: sensor.alpstuga_air_quality_monitor_humidity
-                name: Bedroom
-              - entity: sensor.babyroom_babyroom_humidity
-                name: Babyroom
-              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_5
-                name: Bath
-              - entity: sensor.timmerflotte_temp_hmd_sensor_humidity_3
-                name: Hall
-            grid_options: { columns: full }
-
-      # ─────────────────────────── CAT FOUNTAIN ──────────────────────────
-      # Just the level here — the detailed stats and chart are on the
-      # Fountain view.
-      - type: grid
-        cards:
-          - type: heading
-            heading: Cat Fountain
-            heading_style: title
-            icon: mdi:circle
-          - !include ../petlibro-water-level-card.yaml
-
-      # ─────────────────────────── AIR QUALITY ───────────────────────────
-      # Carried over from dashboard-general. The original grid_options used
-      # `columns: 18`, which only made sense in that view's 4-column layout;
-      # normalised to full width here.
-      - type: grid
-        cards:
-          - type: heading
-            heading: Air Quality
-            heading_style: title
-            icon: mdi:circle
-          - type: sensor
-            entity: sensor.alpstuga_air_quality_monitor_carbon_dioxide
-            graph: line
-            detail: 1
-            name: { type: entity }
-            grid_options: { columns: full, rows: 4 }
-          - type: sensor
-            entity: sensor.alpstuga_air_quality_monitor_pm2_5
-            graph: line
-            detail: 1
-            name: { type: entity }
-            grid_options: { columns: full, rows: 4 }
+            # ────────────────────────── AIR QUALITY ───────────────────────
+            # Carried over from dashboard-general.
+            - type: heading
+              heading: Air Quality
+              heading_style: title
+              icon: mdi:circle
+            - type: sensor
+              entity: sensor.alpstuga_air_quality_monitor_carbon_dioxide
+              graph: line
+              detail: 1
+              name: { type: entity }
+            - type: sensor
+              entity: sensor.alpstuga_air_quality_monitor_pm2_5
+              graph: line
+              detail: 1
+              name: { type: entity }
 
   # ══════════════════════════════ FOUNTAIN ════════════════════════════
   # Both cards are pulled straight from the maintained copies at the repo
@@ -214,57 +178,133 @@ views:
   - title: Fountain
     path: fountain
     icon: mdi:circle
-    type: sections
-    max_columns: 2
-    sections:
-      - type: grid
-        column_span: 2
-        cards:
-          - !include ../petlibro-fountain-card.yaml
-          - !include ../petlibro-fountain-chart-card.yaml
+    type: panel
+    cards:
+      # mod-card wraps the stack in an ha-card we can pad, which insets every
+      # card inside it. Needed because panel views render edge-to-edge, and
+      # card-mod has no handling of its own for stacks or views.
+      - type: custom:mod-card
+        card_mod:
+          style: |
+            ha-card {
+              background: none;
+              border: none;
+              box-shadow: none;
+              padding: 0 12px;
+            }
+        card:
+          type: vertical-stack
+          cards:
+            - !include ../petlibro-fountain-card.yaml
+            - !include ../petlibro-fountain-chart-card.yaml
+
+            # ───────────────────── 30-DAY DRINKING TREND ──────────────────
+            # The cards above answer "now"; a sustained shift in how much a
+            # cat drinks only shows up against weeks of history.
+            #
+            # Both sensors are cumulative-since-midnight and reset at 00:00,
+            # so what is wanted is one bar per day carrying that day's total.
+            #
+            # Which stat_type delivers that depends on the sensor's state_class,
+            # and HA never stores both:
+            #   measurement      -> min/max/mean.  The day's total is its `max`.
+            #   total_increasing -> sum/state/change. The day's total is `change`.
+            # Asking for the wrong one renders an EMPTY chart with no error --
+            # which is what `[max]` alone did here, because the Petlibro
+            # integration declares its daily-mL sensors as TOTAL_INCREASING.
+            #
+            # Both are listed rather than just `change` so the chart survives
+            # the integration changing its mind, or one of these two sensors
+            # differing from the other. Because the two classes are mutually
+            # exclusive, only one ever resolves -- there is no double bar.
+            #
+            # If a chart is STILL empty, the sensor has no state_class at all
+            # and records no statistics; `python3 scripts/ha.py stats` shows
+            # that as NO STATS.
+            #
+            # Bars rather than a line: these are discrete daily totals, not a
+            # continuous signal, and a bar chart makes a single odd day
+            # obvious instead of smoothing it away.
+            - type: heading
+              heading: Last 30 Days
+              heading_style: subtitle
+              icon: mdi:circle
+            - type: statistics-graph
+              days_to_show: 30
+              period: day
+              chart_type: bar
+              stat_types:
+                - max
+                - change
+              entities:
+                - entity: sensor.dockstream_smart_fountain_today_s_water_consumption
+                  name: Water drunk
+            - type: statistics-graph
+              days_to_show: 30
+              period: day
+              chart_type: bar
+              stat_types:
+                - max
+                - change
+              entities:
+                - entity: sensor.dockstream_smart_fountain_today_s_total_drinking_times
+                  name: Drinking sessions
 
   # ═════════════════════════════ BUTTONS ══════════════════════════════
   # Copied from dashboard-giacomo. The two placeholder "New section"
-  # headings and the trailing empty section were dropped.
+  # headings and the trailing empty section were dropped. The buttons keep
+  # their 2-across layout via a grid card, since grid_options does nothing
+  # outside a sections view.
   - title: Buttons
     path: buttons
     icon: mdi:gesture-tap-button
-    type: sections
-    max_columns: 4
-    sections:
-      - type: grid
-        column_span: 3
-        cards:
-          - type: heading
-            heading: Lights
-            heading_style: title
-            icon: mdi:circle
-          - type: button
-            entity: switch.big_light
-            show_name: true
-            show_icon: true
-            show_state: true
-            grid_options: { columns: 6, rows: 3 }
-          - type: button
-            entity: switch.tree
-            color: green
-            show_name: true
-            show_icon: true
-            show_state: true
-            grid_options: { columns: 6, rows: 3 }
-          - type: button
-            entity: switch.kettelinch
-            show_name: true
-            show_icon: true
-            show_state: true
-            grid_options: { columns: 6, rows: 3 }
-          - type: button
-            entity: switch.lampadina
-            show_name: true
-            show_icon: true
-            show_state: true
-            grid_options: { columns: 6, rows: 3 }
-          - type: light
-            entity: light.kajplats_e27_ws_globe_1521lm
-          - type: light
-            entity: light.kajplats_e14_ws_globe_806lm
+    type: panel
+    cards:
+      # mod-card wraps the stack in an ha-card we can pad, which insets every
+      # card inside it. Needed because panel views render edge-to-edge, and
+      # card-mod has no handling of its own for stacks or views.
+      - type: custom:mod-card
+        card_mod:
+          style: |
+            ha-card {
+              background: none;
+              border: none;
+              box-shadow: none;
+              padding: 0 12px;
+            }
+        card:
+          type: vertical-stack
+          cards:
+            - type: heading
+              heading: Lights
+              heading_style: title
+              icon: mdi:circle
+            - type: grid
+              columns: 2
+              square: false
+              cards:
+                - type: button
+                  entity: switch.big_light
+                  show_name: true
+                  show_icon: true
+                  show_state: true
+                - type: button
+                  entity: switch.tree
+                  color: green
+                  show_name: true
+                  show_icon: true
+                  show_state: true
+                - type: button
+                  entity: switch.kettelinch
+                  show_name: true
+                  show_icon: true
+                  show_state: true
+                - type: button
+                  entity: switch.lampadina
+                  show_name: true
+                  show_icon: true
+                  show_state: true
+            - type: light
+              entity: light.kajplats_e27_ws_globe_1521lm
+            - type: light
+              entity: light.kajplats_e14_ws_globe_806lm

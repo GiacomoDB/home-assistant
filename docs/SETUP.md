@@ -248,3 +248,6 @@ nothing installed. The standalone cards at the repo root do have dependencies:
 | `petlibro-fountain-card.yaml` | [`html-template-card`](https://github.com/PiotrMachowski/Home-Assistant-Lovelace-HTML-Jinja2-Template-card) (HACS) |
 | `petlibro-fountain-chart-card.yaml` | [`apexcharts-card`](https://github.com/RomRider/apexcharts-card) (HACS) |
 | `eink-sensor-card.js` | Copy to `config/www/`, add as a dashboard resource |
+
+`dashboards/home.yaml` additionally needs `card-mod`, which supplies the side
+margins on its panel views.

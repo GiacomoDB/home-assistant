@@ -1,0 +1,204 @@
+# Room-by-room temperature and humidity as a compact 3-across grid.
+#
+# History: this started as one room per row with Room/Temp/Humidity columns.
+# That was legible but wasted the width of the screen on six short numbers and
+# forced the type small to stay compact. Three cells per row fits all six rooms
+# in two rows, which buys enough vertical room to set the temperature large
+# while still ending up shorter than the one-per-row table was.
+#
+# Temperature is the headline in each cell; humidity sits under it, smaller.
+# The units do the labelling, so there is no header row to pay for.
+#
+# Borders: `border-top` on every cell minus the first row, `border-right` on
+# every cell minus each row's last. Done this way round rather than
+# bottom/right so a room count that is not a multiple of 3 still renders a
+# clean grid — the final short row simply has fewer cells.
+#
+# Outdoor strip: there is no outdoor sensor in this instance, but the weather
+# integration carries an outdoor temperature, which is the context that makes
+# the indoor numbers mean anything ("is 19 in the hall bad?"). The entity is
+# discovered as the first in the `weather` domain rather than hardcoded, since
+# its id depends on how the integration was named at setup. No weather
+# integration, or no temperature on it, and the strip omits itself.
+#
+# Requires html-template-card (HACS).
+#
+# To add, remove or reorder rooms, edit the `rooms` list below: one entry per
+# room, as [label, temperature entity, humidity entity]. Keep labels short —
+# a cell is approximately a third of the screen and long names ellipsize.
+
+type: custom:html-template-card
+title: ""
+ignore_line_breaks: true
+content: >
+  {% set rooms = [
+    ['Living Room', 'sensor.timmerflotte_temp_hmd_sensor_temperature_4', 'sensor.timmerflotte_temp_hmd_sensor_humidity_4'],
+    ['Kitchen',     'sensor.timmerflotte_temp_hmd_sensor_temperature',   'sensor.timmerflotte_temp_hmd_sensor_humidity'],
+    ['Bedroom',     'sensor.alpstuga_air_quality_monitor_temperature',   'sensor.alpstuga_air_quality_monitor_humidity'],
+    ['Babyroom',    'sensor.babyroom_babyroom_temperature',              'sensor.babyroom_babyroom_humidity'],
+    ['Bath',        'sensor.timmerflotte_temp_hmd_sensor_temperature_5', 'sensor.timmerflotte_temp_hmd_sensor_humidity_5'],
+    ['Hall',        'sensor.timmerflotte_temp_hmd_sensor_temperature_3', 'sensor.timmerflotte_temp_hmd_sensor_humidity_3']
+  ] %}
+
+  {% set wxs = states.weather | list %}
+  {% set wx = wxs[0] if wxs | count > 0 else none %}
+  {% set wtemp = wx.attributes.get('temperature') if wx is not none else none %}
+  {% set conditions = {
+    'clear-night': 'Clear', 'cloudy': 'Cloudy', 'exceptional': 'Exceptional',
+    'fog': 'Fog', 'hail': 'Hail', 'lightning': 'Lightning',
+    'lightning-rainy': 'Thunder', 'partlycloudy': 'Partly cloudy',
+    'pouring': 'Pouring', 'rainy': 'Rain', 'snowy': 'Snow',
+    'snowy-rainy': 'Sleet', 'sunny': 'Sunny', 'windy': 'Windy',
+    'windy-variant': 'Windy'
+  } %}
+
+  <style>
+    /* Scoped with :has() and NOT written as a bare `ha-card` selector.
+       hui-card opts out of shadow DOM (createRenderRoot returns `this`), so every
+       card in a stack renders into the STACK's shadow tree -- and html-template-card
+       has no shadow root either, putting this <style> and this card's <ha-card> in
+       that shared tree. A bare `ha-card` rule therefore hits every sibling card that
+       also lacks its own shadow root, i.e. every other html-template-card on the
+       view. Cards built as normal LitElements are immune, which is what makes the
+       leak so easy to miss. `:has(.cl-card)` can only ever match this card. */
+    ha-card:has(.cl-card) { background: none !important; box-shadow: none !important; border: none !important; }
+
+    .cl-card {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--ha-card-background, var(--card-background-color, #fff));
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    /* Slim context strip above the grid; reads as a caption, not a 7th room. */
+    .cl-out {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 11px 6px;
+      border-bottom: 1px solid var(--divider-color, #e0e0e0);
+    }
+
+    .cl-out-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--secondary-text-color, #727272);
+    }
+
+    .cl-out-right {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .cl-out-cond {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--secondary-text-color, #727272);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cl-out-val {
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--primary-text-color, #212121);
+      white-space: nowrap;
+    }
+
+    .cl-out-val i {
+      font-style: normal;
+      font-size: 10px;
+      font-weight: 500;
+      opacity: 0.6;
+      margin-left: 1px;
+    }
+
+    .cl-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .cl-cell {
+      padding: 9px 3px 10px;
+      text-align: center;
+      min-width: 0;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+      border-right: 1px solid var(--divider-color, #e0e0e0);
+    }
+
+    .cl-cell:nth-child(-n + 3) { border-top: none; }
+    .cl-cell:nth-child(3n) { border-right: none; }
+
+    .cl-room {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      line-height: 1.3;
+      color: var(--secondary-text-color, #727272);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* tabular-nums stops the temperature jittering sideways as it changes */
+    .cl-t {
+      font-size: 21px;
+      font-weight: 700;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      color: #e05c4a;
+      margin-top: 3px;
+    }
+
+    .cl-h {
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.3;
+      font-variant-numeric: tabular-nums;
+      color: #3d8fd1;
+      margin-top: 1px;
+    }
+
+    .cl-t i {
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 500;
+      opacity: 0.6;
+      margin-left: 1px;
+    }
+
+    .cl-na { color: var(--secondary-text-color, #9e9e9e); font-weight: 400; }
+  </style>
+
+
+  <div class="cl-card">
+    {% if wtemp is not none and wtemp | is_number %}
+      <div class="cl-out">
+        <span class="cl-out-label">Outside</span>
+        <span class="cl-out-right">
+          <span class="cl-out-cond">{{ conditions.get(wx.state, wx.state | replace('-', ' ') | title) }}</span>
+          <span class="cl-out-val">{{ wtemp | float | round(1) }}<i>°C</i></span>
+        </span>
+      </div>
+    {% endif %}
+    <div class="cl-grid">
+      {% for room in rooms %}
+        {% set t = states(room[1]) %}
+        {% set h = states(room[2]) %}
+        <div class="cl-cell">
+          <div class="cl-room">{{ room[0] }}</div>
+          <div class="cl-t">{% if t | is_number %}{{ t | float | round(1) }}<i>°C</i>{% else %}<span class="cl-na">—</span>{% endif %}</div>
+          <div class="cl-h">{% if h | is_number %}{{ h | float | round(0) | int }}%{% else %}<span class="cl-na">—</span>{% endif %}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>

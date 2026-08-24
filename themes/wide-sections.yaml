@@ -1,0 +1,36 @@
+# Widens the single sections column so cards use more of the screen.
+#
+# Home Assistant caps each sections-view column at 500px by default, so a
+# one-column dashboard sits in a narrow centred strip with wide empty margins.
+# Column width and section gaps are theme-only variables — they cannot be set
+# from dashboard YAML, which is why this lives outside dashboards/ and is the
+# one part of this repo the deploy pipeline cannot push for you.
+#
+# Note: theme variables are written WITHOUT the leading `--` here; Home
+# Assistant adds it when it builds the CSS.
+#
+# ── Install (once) ──────────────────────────────────────────────────────────
+#  1. Copy this file to your HA config as `themes/wide-sections.yaml`.
+#  2. Make sure configuration.yaml loads the themes directory:
+#
+#       frontend:
+#         themes: !include_dir_merge_named themes
+#
+#  3. Restart Home Assistant.
+#  4. Either pick "Wide Sections" in your profile (applies everywhere), or add
+#
+#       theme: wide_sections
+#
+#     to the views in dashboards/home.yaml (applies only to that dashboard,
+#     leaving the Kindle dashboard alone). Ask and I'll wire it in.
+# ────────────────────────────────────────────────────────────────────────────
+
+wide_sections:
+  # 500px is the stock value. 760px suits a phone in landscape and a laptop
+  # without stretching text lines uncomfortably wide.
+  ha-view-sections-column-max-width: 760px
+  ha-view-sections-column-min-width: 320px
+
+  # Tighter gutters between and below sections.
+  ha-view-sections-column-gap: 12px
+  ha-view-sections-row-gap: 12px

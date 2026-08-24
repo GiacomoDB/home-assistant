@@ -59,6 +59,21 @@ temp/humidity pairing and then confirmed to exist.
 There is **no outdoor temperature sensor** in this instance — the dashboard's
 badge row uses Living Room temperature, fountain level and CO₂ instead.
 
+### Outdoor temperature — from the weather integration
+
+The climate card's "Outside" strip does not use a sensor. It takes the first
+entity in the `weather` domain and reads its `temperature` attribute, because
+that id depends on how the weather integration was named at setup and is not
+worth pinning. Confirm what yours is with:
+
+```sh
+python scripts/ha.py entities 'weather.*'
+```
+
+If the strip never appears, either there is no weather integration configured
+or the entity reports no `temperature` attribute. Both cases hide the strip
+rather than showing a wrong or zero value.
+
 ---
 
 ## Air quality — Alpstuga monitor
@@ -69,6 +84,41 @@ This device also provides the Bedroom temperature and humidity above.
 |---|---|
 | `sensor.alpstuga_air_quality_monitor_carbon_dioxide` | CO₂ ppm |
 | `sensor.alpstuga_air_quality_monitor_pm2_5` | PM2.5 |
+
+---
+
+## Batteries
+
+Not enumerated here on purpose. `battery-alert-card.yaml` discovers batteries at
+render time by walking every entity with `device_class: battery`, covering both
+`sensor` (percentage) and `binary_sensor` (`on` = low). A list written down here
+would go stale the next time a device is paired, and staleness is the specific
+failure the card exists to prevent.
+
+To see the current set:
+
+```sh
+python scripts/ha.py entities battery
+```
+
+Battery-powered devices in this instance: the IKEA Timmerflotte temp/humidity
+sensors, the Bilresa scroll wheels, the Tado TRVs and the Alpstuga monitor.
+
+**Threshold:** at or below 20% is listed; at or below 10% renders red. Both live
+in `battery-alert-card.yaml` as the `threshold` variable at the top.
+
+**Ignored devices.** Some mains-powered devices still expose a battery entity
+and park it at 0. The Granary feeder is plugged in and reports 0%, which is a
+bogus value rather than a flat battery, so it is excluded via the `ignore` list
+next to `threshold`. Entries match as substrings against the entity_id.
+
+| Ignored | Why |
+|---|---|
+| `granary` | Granary feeder is mains-powered; its battery entity reads a fixed 0% |
+
+The filter is per **device**, not per value — a blanket "hide anything reading
+exactly 0" rule would also hide a genuinely dead battery, which is the single
+reading this card most needs to show.
 
 ---
 

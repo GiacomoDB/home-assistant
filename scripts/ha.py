@@ -340,21 +340,78 @@ def referenced_entities(node, found: set[str] | None = None) -> set[str]:
 
 # ── subcommands ─────────────────────────────────────────────────────────────
 
+def count_cards(node) -> int:
+    """Count every card, including ones nested in stacks and grids.
+
+    Panel views hold a single stack card that contains everything, so a
+    top-level count would report 1.
+    """
+    total = 0
+    if isinstance(node, dict):
+        if "type" in node and not isinstance(node.get("type"), dict):
+            total += 1
+        for key, value in node.items():
+            if key in ("cards", "card", "sections", "views"):
+                total += count_cards(value)
+    elif isinstance(node, list):
+        for item in node:
+            total += count_cards(item)
+    return total
+
+
+def lint_card_styles() -> list[str]:
+    """Flag CSS in html-template-cards that would style OTHER cards.
+
+    `hui-card` opts out of shadow DOM (`createRenderRoot()` returns `this`), so
+    every card in a stack renders into the stack's shadow tree. html-template-card
+    has no shadow root either, which puts its <style> AND its <ha-card> in that
+    shared tree -- so a bare `ha-card { ... }` rule reaches every sibling card
+    that also lacks a shadow root, i.e. every other html-template-card on the
+    view. Cards written as ordinary LitElements keep their ha-card inside their
+    own shadow root and are unaffected, which is what makes this so easy to ship
+    without noticing: it looks fine until two of these cards share a view.
+
+    A `display: none` written that way blanks the other cards outright. Scope
+    every rule to a marker the card actually contains -- `ha-card:has(.my-root)`
+    -- so it can only ever match its own card.
+
+    Only selectors written at the start of a line are checked, which is how they
+    are written here; a selector split across lines would slip through.
+    """
+    problems = []
+    for path in sorted(REPO_ROOT.glob("*.yaml")):
+        try:
+            doc = yaml.safe_load(path.read_text())
+        except yaml.YAMLError:
+            continue  # blueprints and other non-card YAML
+        if not isinstance(doc, dict) or "html-template-card" not in str(doc.get("type", "")):
+            continue
+        for number, line in enumerate(str(doc.get("content", "")).splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("ha-card") and not stripped.startswith("ha-card:has("):
+                problems.append(
+                    f"{path.name}: unscoped 'ha-card' selector in template line "
+                    f"{number} -- use ha-card:has(.your-root-class) so the rule "
+                    f"cannot style sibling cards"
+                )
+    return problems
+
+
 def cmd_validate(_args) -> int:
     for entry in load_manifest():
         config = load_dashboard(entry)
         views = config["views"]
-        cards = sum(
-            len(section.get("cards", []))
-            for view in views
-            for section in view.get("sections", [])
-        ) + sum(len(view.get("cards", [])) for view in views)
+        cards = count_cards(views)
         entities = referenced_entities(config)
         print(
             f"ok  {entry['file']:<20} {len(views)} view(s), "
             f"{cards} card(s), {len(entities)} entit(y|ies)"
         )
-    return 0
+
+    problems = lint_card_styles()
+    for problem in problems:
+        print(f"ERROR  {problem}", file=sys.stderr)
+    return 1 if problems else 0
 
 
 def cmd_entities(args) -> int:
@@ -379,6 +436,59 @@ def cmd_entities(args) -> int:
     for entity_id, value, name in sorted(rows):
         print(f"{entity_id:<{width}}  {value:>10}  {name}")
     return 0
+
+
+def cmd_stats(_args) -> int:
+    """Report which dashboard entities have long-term statistics.
+
+    The statistics-graph card reads long-term statistics, not recorder history.
+    HA only records those for sensors with a `state_class` of measurement,
+    total or total_increasing -- anything else plots as an empty series with no
+    error shown. This answers "will that card draw anything?" before a deploy.
+    """
+    ha = client_from_env()
+    print(f"# connected to Home Assistant {ha.version}", file=sys.stderr)
+    # has_mean / has_sum decide which stat_types a statistics-graph card can
+    # actually plot. HA keeps min/max/mean for `state_class: measurement` and
+    # sum for total/total_increasing -- ask for the wrong one and the series is
+    # empty with no error, so the card needs to be told which is which.
+    known = {
+        row["statistic_id"]: row
+        for row in (ha.command("recorder/list_statistic_ids") or [])
+    }
+
+    wanted: set[str] = set()
+    for entry in load_manifest():
+        wanted |= referenced_entities(load_dashboard(entry))
+    ha.close()
+
+    if not wanted:
+        print("no entities referenced by any dashboard", file=sys.stderr)
+        return 0
+
+    width = max(len(entity_id) for entity_id in wanted)
+    missing = 0
+    print(f"{'ENTITY':<{width}}  {'STATS':<8}  USABLE stat_types")
+    for entity_id in sorted(wanted):
+        row = known.get(entity_id)
+        missing += row is None
+        if row is None:
+            print(f"{entity_id:<{width}}  {'NO STATS':<8}  -")
+            continue
+        kinds = []
+        if row.get("has_mean"):
+            kinds.append("min/max/mean")
+        if row.get("has_sum"):
+            kinds.append("sum/state/change")
+        print(f"{entity_id:<{width}}  {'stats':<8}  {', '.join(kinds) or 'unknown'}")
+
+    print(
+        f"\n{len(wanted) - missing}/{len(wanted)} have long-term statistics",
+        file=sys.stderr,
+    )
+    # Non-zero so this is usable as a check, but note that plenty of entities
+    # legitimately have no statistics (switches, lights) -- read the list.
+    return 1 if missing else 0
 
 
 def ha_dashboards(ha) -> list[dict]:
@@ -535,6 +645,11 @@ def main() -> int:
         help="exit non-zero if any referenced entity does not exist",
     )
     deploy.set_defaults(func=cmd_deploy)
+
+    subparsers.add_parser(
+        "stats",
+        help="check which dashboard entities have long-term statistics",
+    ).set_defaults(func=cmd_stats)
 
     subparsers.add_parser(
         "dashboards", help="list the dashboards in HA and who manages them"

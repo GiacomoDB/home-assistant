@@ -25,7 +25,15 @@ content: >
   {% endif %}
 
   <style>
-    ha-card { background: none !important; box-shadow: none !important; border: none !important; }
+    /* Scoped with :has() and NOT written as a bare `ha-card` selector.
+       hui-card opts out of shadow DOM (createRenderRoot returns `this`), so every
+       card in a stack renders into the STACK's shadow tree -- and html-template-card
+       has no shadow root either, putting this <style> and this card's <ha-card> in
+       that shared tree. A bare `ha-card` rule therefore hits every sibling card that
+       also lacks its own shadow root, i.e. every other html-template-card on the
+       view. Cards built as normal LitElements are immune, which is what makes the
+       leak so easy to miss. `:has(.wl-card)` can only ever match this card. */
+    ha-card:has(.wl-card) { background: none !important; box-shadow: none !important; border: none !important; }
 
     .wl-card {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

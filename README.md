@@ -6,6 +6,7 @@ Assistant by GitHub Actions on every push to `main`.
 
 ```
 dashboards/          dashboard configs + the manifest that maps them to HA
+themes/              theme files — copied to HA by hand, not deployable
 scripts/ha.py        deploy / entity-lookup / validate CLI
 docs/SETUP.md        credentials, GitHub secrets, reverse-proxy notes
 docs/ENTITIES.md     every entity ID this repo depends on
@@ -23,19 +24,30 @@ at `dashboard-general`.
 
 **Home** — the at-a-glance view:
 
-- **Climate** — one row per room (Living Room, Kitchen, Bedroom, Babyroom,
-  Bath, Hall), each heading carrying its temperature and humidity as inline
-  badges, so six rooms take six lines. 24-hour history graphs below.
+- **Clock** — the built-in `clock` card at the top, no HACS dependency.
+- **Low battery** — `battery-alert-card.yaml`, which hides itself completely
+  unless something is actually low.
+- **Climate** — all six rooms (Living Room, Kitchen, Bedroom, Babyroom, Bath,
+  Hall) as a 3-across grid via `climate-table-card.yaml`, with an outdoor
+  temperature strip on top. 24-hour statistics graphs below.
 - **Cat Fountain** — just the water level, via
   `petlibro-water-level-card.yaml`.
 - **Air Quality** — CO₂ and PM2.5 line graphs from the Alpstuga monitor.
 
-**Fountain** — the detail: the `html-template-card` stat card and the
-`apexcharts` today-vs-yesterday chart.
+**Fountain** — the detail: the `html-template-card` stat card, the `apexcharts`
+today-vs-yesterday chart, and 30-day daily-total bar charts for water drunk and
+drinking sessions.
 
 **Buttons** — the light and switch buttons.
 
-The three custom cards are pulled in with `!include` from the maintained copies
+Side margins come from [`card-mod`](https://github.com/thomasloven/lovelace-card-mod):
+each view's `vertical-stack` is wrapped in a `custom:mod-card`, whose `ha-card`
+is padded 12px. Panel views render edge-to-edge and `grid_options` does nothing
+outside a sections view, so this is the available lever. It has to be the
+wrapper rather than `card_mod` on the stack itself — card-mod has no handling
+for stack or view elements, so styling them directly does nothing.
+
+The four custom cards are pulled in with `!include` from the maintained copies
 at the repo root, so the standalone versions and the dashboard can't drift
 apart. That means this dashboard needs `html-template-card` and
 `apexcharts-card` from HACS.
@@ -44,6 +56,23 @@ This dashboard was merged from two older ones. `dashboard-giacomo`, which
 renders the Kindle Dashboard, is deliberately left out of the manifest and is
 never written to. Pre-merge snapshots of everything live in
 `dashboards/_pulled/`.
+
+### Themes
+
+Column widths and section gaps in a sections view are **theme variables**, not
+dashboard config — Home Assistant caps each column at 500px by default, and
+that cannot be changed from the YAML this repo deploys.
+
+`dashboards/home.yaml` sidesteps this by using `type: panel` views, which
+render a single card edge-to-edge at full width with no theme and no HACS
+dependency — so this file is currently **unused**.
+
+It's kept as the alternative: `themes/wide-sections.yaml` widens the sections
+column to 760px and tightens the gutters, for if the dashboard ever moves back
+to sections views. It has to be copied into your HA config by hand (install
+steps are in the file); the WebSocket API used by `scripts/ha.py` writes
+dashboards only, not config files. Once installed, a view opts in with
+`theme: wide_sections`.
 
 ### Deploying
 
@@ -83,6 +112,27 @@ in the HA UI.
 
 ## Custom Cards
 
+### A note on CSS in `html-template-card`
+
+Always scope `ha-card` rules as `ha-card:has(.your-root-class)`. Never write a
+bare `ha-card { ... }`.
+
+`hui-card` opts out of shadow DOM (`createRenderRoot()` returns `this`), so
+every card in a stack renders into the *stack's* shadow tree. `html-template-card`
+has no shadow root either, which puts its `<style>` **and** its `<ha-card>` in
+that shared tree — so a bare `ha-card` rule reaches every sibling card that also
+lacks a shadow root, meaning every other `html-template-card` on the view. Cards
+written as ordinary LitElements keep their `ha-card` inside their own shadow root
+and are unaffected, which is what makes this easy to ship without noticing: it
+looks fine until two of these cards share a view.
+
+A `display: none` written that way blanks the neighbouring cards outright, which
+is precisely how the battery card's empty state once hid the climate table.
+
+`python scripts/ha.py validate` fails on an unscoped selector, so CI catches it
+before a deploy does.
+
+
 ### E-ink Sensor Card
 
 A minimal sensor card designed for e-ink displays. Shows sensor value with one decimal place, unit, and optional label.
@@ -107,6 +157,55 @@ value_font_size: 120
 unit_font_size: 40
 label_font_size: 32
 ```
+
+### Climate Table Card
+
+Room-by-room temperature and humidity as a compact table with column headers,
+aligned columns and row dividers.
+
+Replaces a stack of `heading` cards carrying entity badges, where the room name
+and its readings sat at opposite edges of the card with a wide gap between
+them, and nothing labelled which number was which measurement.
+
+**Requires:** the `html-template-card` custom card (installable via HACS).
+
+Rooms are a list at the top of the template — one entry per room, as
+`[label, temperature entity, humidity entity]` — so adding or reordering rooms
+is a one-line edit. Sensors that are unavailable render as `—` rather than 0.
+
+It also carries an **outdoor temperature strip** above the grid, which supplies
+the context the indoor numbers lack. There is no outdoor sensor in this
+instance, so the reading comes from the weather integration — discovered as the
+first entity in the `weather` domain rather than hardcoded, since that id
+depends on how the integration was named at setup. With no weather integration,
+or none reporting a temperature, the strip omits itself.
+
+**Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#climate).
+
+### Battery Alert Card
+
+`battery-alert-card.yaml` — lists any battery at or below 20%, and renders
+nothing whatsoever when they are all healthy.
+
+**Requires:** the `html-template-card` custom card (installable via HACS).
+
+It finds batteries by walking every entity with `device_class: battery` instead
+of reading a fixed list, so a newly paired device is covered immediately — a
+hardcoded list would silently stop covering new devices, which is the exact
+failure this card exists to catch. The tradeoff is that iterating `states`
+subscribes the template to all state changes, which is why this pattern is used
+once here rather than in several cards.
+
+Handles both battery flavours: `sensor` (a percentage) and `binary_sensor`
+(`on` = low, no number available). Binary ones sort first, then percentages
+ascending; at or below half the threshold the figure turns red.
+
+An `ignore` list next to the threshold excludes mains-powered devices that
+expose a battery entity anyway and park it at 0 — the Granary feeder does this.
+Entries match as substrings against the entity_id. The filter is per device
+rather than per value on purpose: hiding everything that reads exactly 0 would
+also hide a genuinely dead battery. See
+[docs/ENTITIES.md](docs/ENTITIES.md#batteries).
 
 ### Petlibro Fountain Card
 
