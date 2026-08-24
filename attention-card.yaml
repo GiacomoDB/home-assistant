@@ -1,0 +1,206 @@
+# "Something needs attention" — water leaks, offline sensors, low batteries.
+# Renders nothing at all when everything is fine.
+#
+# One card rather than three, because these share a job: they are the things
+# you want shoved in your face on the way past, and the rest of the time you
+# want them taking up no room whatsoever. Splitting them would mean three cards
+# each mostly invisible, and three chances to forget one.
+#
+# Ordered by how fast you need to act:
+#   1. WATER LEAK   — acting late here is measured in floorboards.
+#   2. OFFLINE      — a sensor that is not reporting is not "fine", but the
+#                     climate grid shows it the same as a healthy one. These
+#                     IKEA Thread sensors drop often enough that there is an
+#                     automation pressing `identify` on five of them every two
+#                     hours to keep them awake, so this row earns its place.
+#   3. LOW BATTERY  — days of warning, not minutes.
+#
+# Nothing here is a hardcoded entity list. Leaks are found by
+# `device_class: moisture` and batteries by `device_class: battery`, so a newly
+# paired device is covered the moment it exists — a fixed list would silently
+# stop covering new devices, which is the exact failure this card is for.
+#
+# Cost of that choice: iterating `states` subscribes the template to all state
+# changes rather than a named few. Fine for one card; it is why this pattern is
+# used once here and not in ten cards.
+#
+# `ignore` exists because some mains-powered devices still expose a battery
+# entity and park it at 0 — the Granary feeder is plugged in and reports 0%,
+# which is a bogus value, not a flat battery. Entries match as substrings
+# against the entity_id AND the friendly name, so an id that does not happen to
+# carry the product name still matches. Note this filters by DEVICE, not by
+# value: a blanket
+# "hide anything reading exactly 0" rule would also hide a genuinely dead
+# battery, which is the one reading this card most needs to show.
+#
+# Hiding when empty: an empty marker div is emitted and the style hides the
+# ha-card that CONTAINS it. The marker is what makes the rule safe. A bare
+# `ha-card { display: none }` is not merely sloppy here, it is a bug that blanks
+# other cards: hui-card opts out of shadow DOM (createRenderRoot returns
+# `this`), so every card in a stack shares the stack's shadow tree, and
+# html-template-card has no shadow root of its own — so an unscoped rule reaches
+# every sibling card that also lacks one. `ha.py validate` fails on one.
+#
+# Requires html-template-card (HACS).
+
+type: custom:html-template-card
+title: ""
+ignore_line_breaks: true
+content: >
+  {% set threshold = 20 %}
+
+  {% set ignore = ['granary'] %}
+
+  {% set ns = namespace(leaks=[], offline=[], flagged=[], low=[]) %}
+
+  {#- Trim ONE trailing occurrence of each noise suffix, rather than `replace`,
+      which strips every occurrence anywhere in the string. The kitchen sensor
+      is called "Klippbok Water Leak Sensor Water Leak", so replace() collapses
+      it to "Klippbok Sensor" -- worse than leaving it alone. -#}
+  {% macro tidy(name, suffixes) %}
+    {%- set ns2 = namespace(text=name) -%}
+    {%- for suffix in suffixes -%}
+      {%- if ns2.text.endswith(suffix) -%}
+        {%- set ns2.text = ns2.text[:-(suffix | length)] -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{- ns2.text -}}
+  {% endmacro %}
+
+  {% for s in states.binary_sensor
+       if s.attributes.device_class == 'moisture' and s.state == 'on' %}
+    {% set ns.leaks = ns.leaks + [tidy(s.name, [' Water Leak', ' Sensor']) | trim] %}
+  {% endfor %}
+
+  {#- `ignore` is matched against the entity_id AND the friendly name. Matching
+      only the entity_id means a device whose id does not happen to carry the
+      product name slips through. -#}
+  {% for s in states.sensor
+       if s.attributes.device_class == 'battery'
+       and not ignore | select('in', (s.entity_id ~ ' ' ~ s.name) | lower) | list %}
+    {% if not s.state | is_number %}
+      {% set ns.offline = ns.offline + [tidy(s.name, [' Battery', ' Sensor']) | trim] %}
+    {% elif s.state | float <= threshold %}
+      {% set ns.low = ns.low + [[tidy(s.name, [' Battery', ' Sensor']) | trim, s.state | float | round(0) | int]] %}
+    {% endif %}
+  {% endfor %}
+
+  {% for s in states.binary_sensor
+       if s.attributes.device_class == 'battery'
+       and not ignore | select('in', (s.entity_id ~ ' ' ~ s.name) | lower) | list
+       and s.state == 'on' %}
+    {% set ns.flagged = ns.flagged + [tidy(s.name, [' Battery', ' Sensor']) | trim] %}
+  {% endfor %}
+
+  {% set total = ns.leaks | count + ns.offline | count + ns.flagged | count + ns.low | count %}
+
+  {% if total == 0 %}
+    <div class="att-empty"></div>
+    <style>ha-card:has(.att-empty) { display: none !important; }</style>
+  {% else %}
+
+  <style>
+    /* Scoped with :has() and NOT written as a bare `ha-card` selector — see the
+       header comment. `:has(.att-card)` can only ever match this card. */
+    ha-card:has(.att-card) { background: none !important; box-shadow: none !important; border: none !important; }
+
+    .att-card {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--ha-card-background, var(--card-background-color, #fff));
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-left: 3px solid {% if ns.leaks %}#e05c4a{% else %}#f0a020{% endif %};
+      border-radius: 14px;
+      padding: 9px 13px 10px;
+    }
+
+    .att-group + .att-group { margin-top: 8px; }
+
+    .att-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      color: #d98600;
+    }
+
+    .att-title.crit { color: #e05c4a; }
+
+    .att-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 3px 0;
+    }
+
+    .att-name {
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.3;
+      color: var(--primary-text-color, #212121);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .att-val {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.3;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      color: #e8a33d;
+    }
+
+    /* Under half the threshold is the one you act on today, not this week. */
+    .att-val.crit { color: #e05c4a; }
+    .att-val.muted { color: var(--secondary-text-color, #9e9e9e); font-weight: 600; }
+  </style>
+
+
+  <div class="att-card">
+    {% if ns.leaks %}
+      <div class="att-group">
+        <div class="att-title crit">Water leak</div>
+        {% for name in ns.leaks %}
+          <div class="att-row">
+            <span class="att-name">{{ name }}</span>
+            <span class="att-val crit">WET</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if ns.offline %}
+      <div class="att-group">
+        <div class="att-title">Not reporting</div>
+        {% for name in ns.offline %}
+          <div class="att-row">
+            <span class="att-name">{{ name }}</span>
+            <span class="att-val muted">Offline</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if ns.flagged or ns.low %}
+      <div class="att-group">
+        <div class="att-title">Low battery</div>
+        {% for name in ns.flagged %}
+          <div class="att-row">
+            <span class="att-name">{{ name }}</span>
+            <span class="att-val crit">Low</span>
+          </div>
+        {% endfor %}
+        {% for row in ns.low | sort(attribute='1') %}
+          <div class="att-row">
+            <span class="att-name">{{ row[0] }}</span>
+            <span class="att-val{% if row[1] <= threshold / 2 %} crit{% endif %}">{{ row[1] }}%</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% endif %}

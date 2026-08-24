@@ -251,3 +251,96 @@ nothing installed. The standalone cards at the repo root do have dependencies:
 
 `dashboards/home.yaml` additionally needs `card-mod`, which supplies the side
 margins on its panel views.
+
+
+---
+
+## Packages (automations)
+
+`packages/` holds automations and the helper entities they need, one file per
+feature. **These are not deployed by `ha.py deploy` or by GitHub Actions.**
+
+That is a real limitation, not an oversight. Dashboards are written over the
+WebSocket API, which has a `lovelace/config/save` command. There is no
+equivalent for arbitrary config files, so packages have to reach the config
+directory as files — by Samba, SSH, the File Editor add-on or Studio Code
+Server. `ha.py validate` still checks them, so CI catches a broken one before
+you copy it across.
+
+### One-time setup
+
+Add this to `configuration.yaml`, if it is not there already:
+
+```yaml
+homeassistant:
+  packages: !include_dir_named packages
+```
+
+`!include_dir_named` uses each **filename** as the package name, so names must
+be unique across the whole folder and must be valid keys — use underscores, not
+hyphens. `validate` fails on a hyphenated filename for that reason.
+
+### Installing or updating
+
+With the Terminal & SSH add-on, this is one command:
+
+```sh
+export HA_SSH_HOST=homeassistant.local     # LAN address, not the tunnel
+scripts/push-packages.sh                   # copy + reload
+scripts/push-packages.sh --restart         # copy + full restart
+```
+
+It validates first and refuses to copy anything that fails — a broken package
+takes the whole config down at restart, which is far worse than not deploying.
+It never deletes on the remote side, so files you added there by hand survive.
+
+Use `--restart` the first time, and any time a package **adds** a `sensor:`
+block: `reload_all` picks up changed automations and templates, but not a newly
+added platform sensor such as the statistics sensor in `cat_water_anomaly.yaml`.
+
+`HA_SSH_HOST` must be the LAN hostname or IP. The Cloudflare tunnel carries
+HTTPS only, and putting SSH through it would be a much larger exposure than the
+WebSocket token. For the same reason this is deliberately **not** part of the
+GitHub Actions workflow — that would mean SSH access from the public internet.
+
+Without SSH, do it by hand:
+
+| Step | What |
+|---|---|
+| 1 | Copy `packages/*.yaml` into `<config>/packages/` (Samba, File Editor, Studio Code Server) |
+| 2 | Developer Tools → YAML → **Check configuration** |
+| 3 | Developer Tools → YAML → **Reload all YAML**, or restart per the note above |
+
+### Verifying it loaded
+
+A package that fails to load does so quietly, and the automation half can load
+while the sensor half fails — so check for the sensor, not just the automations:
+
+```sh
+python scripts/ha.py entities 'automation.*'
+python scripts/ha.py entities 'cat water'
+```
+
+### What is in them
+
+| Package | Does |
+|---|---|
+| `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average and notifies when it deviates by 35% or more. Ships the statistics sensor it depends on. |
+| `bath_humidity.yaml` | Notifies when bathroom humidity stays above 70% for two hours *and* sits 10+ points above the hall, the condition mould needs. |
+| `water_leak.yaml` | Repeating high-priority alarm every 5 minutes while any moisture sensor is wet, capped at an hour, with an all-clear when it dries. |
+
+### Notifications
+
+All three are pinned to `notify.mobile_app_pixel_8_pro`, matching the convention
+already used by the "Acqua gatto notifica" automation. `notify_target` at the top
+of each automation's `variables:` block is the single place to change it; find
+other services with:
+
+```sh
+python scripts/ha.py entities 'notify.*'
+```
+
+Each carries a `tag`, so a repeat replaces the previous notification rather than
+stacking, and a `channel` so Android can be tuned per alert type. Each also
+raises a persistent notification behind `continue_on_error: true`, so an alert
+is never lost to an undelivered push.

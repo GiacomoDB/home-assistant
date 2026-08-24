@@ -1,0 +1,104 @@
+# Water leak alarm.
+#
+# The one alert here where minutes matter. Everything else in this repo can wait
+# until you next look at your phone; a leak under the kitchen sink cannot, so
+# this one is deliberately louder and more persistent than the others:
+#
+#   * high importance and priority, with ttl 0, so Android delivers it
+#     immediately rather than batching it until the phone next wakes.
+#   * it repeats every 5 minutes for as long as the sensor is still wet, up to
+#     an hour. A single notification is trivially missed, and being told once
+#     about a leak you slept through is no use.
+#   * an all-clear is sent when it dries, so a silent phone is never ambiguous.
+#
+# The `tag` means each repeat REPLACES the previous notification instead of
+# stacking twelve of them, and the all-clear replaces the alarm.
+#
+# WHY A TEMPLATE TRIGGER RATHER THAN AN ENTITY LIST
+# It fires on any binary_sensor with `device_class: moisture`, so a leak sensor
+# added later is covered the moment it is paired, with no edit here. That is
+# worth more than the precision of a fixed list for something whose entire job
+# is catching a failure you did not plan for. Cost: the template is re-evaluated
+# on state changes rather than watching named entities. Cheap enough for one
+# automation.
+#
+# Currently that means binary_sensor.klippbok_water_leak_sensor_water_leak,
+# under the kitchen sink.
+
+automation:
+  - id: water_leak_detected
+    alias: "Water leak detected"
+    description: >-
+      Repeating high-priority alert while any moisture sensor is wet, with an
+      all-clear when it dries.
+    mode: single
+    # A second sensor going wet mid-alarm should not start a rival loop; the
+    # running one already covers it and names every wet sensor each time.
+    max_exceeded: silent
+    triggers:
+      - trigger: template
+        value_template: >-
+          {{ states.binary_sensor
+             | selectattr('attributes.device_class', 'eq', 'moisture')
+             | selectattr('state', 'eq', 'on') | list | count > 0 }}
+    actions:
+      - variables:
+          notify_target: notify.mobile_app_pixel_8_pro
+      - repeat:
+          sequence:
+            - variables:
+                wet: >-
+                  {{ states.binary_sensor
+                     | selectattr('attributes.device_class', 'eq', 'moisture')
+                     | selectattr('state', 'eq', 'on')
+                     | map(attribute='name') | list | join(', ') }}
+            - action: "{{ notify_target }}"
+              continue_on_error: true
+              data:
+                title: "💧 Water leak detected"
+                message: "{{ wet }} is wet. Check it now."
+                data:
+                  tag: water-leak
+                  channel: Water Leak
+                  importance: high
+                  priority: high
+                  # 0 = deliver immediately, do not wait for the next wake.
+                  ttl: 0
+                  # Survives a swipe-away until the leak is dealt with.
+                  persistent: true
+            - action: persistent_notification.create
+              data:
+                title: "Water leak detected"
+                notification_id: water_leak
+                message: "{{ wet }} is wet."
+            - delay:
+                minutes: 5
+          while:
+            - condition: template
+              value_template: >-
+                {{ states.binary_sensor
+                   | selectattr('attributes.device_class', 'eq', 'moisture')
+                   | selectattr('state', 'eq', 'on') | list | count > 0 }}
+            # Stop after an hour. If it is still wet by then the notification
+            # is not the thing that is going to help.
+            - condition: template
+              value_template: "{{ repeat.index < 12 }}"
+      # Only an actual dry-out earns an all-clear; hitting the hour cap does not.
+      - if:
+          - condition: template
+            value_template: >-
+              {{ states.binary_sensor
+                 | selectattr('attributes.device_class', 'eq', 'moisture')
+                 | selectattr('state', 'eq', 'on') | list | count == 0 }}
+        then:
+          - action: "{{ notify_target }}"
+            continue_on_error: true
+            data:
+              title: "Water leak cleared"
+              message: "All moisture sensors are dry again."
+              data:
+                tag: water-leak
+                channel: Water Leak
+          - action: persistent_notification.dismiss
+            data:
+              notification_id: water_leak

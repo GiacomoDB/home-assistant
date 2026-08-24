@@ -1,0 +1,22 @@
+automation:
+- id: '1784744017168'
+  alias: Alert when a Thread sensor goes unavailable
+  triggers:
+  - trigger: state
+    entity_id:
+    - sensor.timmerflotte_temp_hmd_sensor_temperature
+    - sensor.timmerflotte_temp_hmd_sensor_temperature_3
+    - sensor.timmerflotte_temp_hmd_sensor_temperature_4
+    - sensor.timmerflotte_temp_hmd_sensor_temperature_5
+    - sensor.babyroom_babyroom_temperature
+    - sensor.alpstuga_air_quality_monitor_temperature
+    to: unavailable
+    for:
+      minutes: 30
+  actions:
+  - action: notify.mobile_app_pixel_8_pro
+    data:
+      title: Thread sensor dropped
+      message: "{{ trigger.to_state.name if trigger is defined and trigger.to_state\
+        \ is defined\n   else 'Test run' }} has been unavailable for 30 minutes."
+  mode: parallel

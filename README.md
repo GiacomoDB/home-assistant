@@ -6,6 +6,7 @@ Assistant by GitHub Actions on every push to `main`.
 
 ```
 dashboards/          dashboard configs + the manifest that maps them to HA
+packages/            automations + their helper entities — copied to HA by hand
 themes/              theme files — copied to HA by hand, not deployable
 scripts/ha.py        deploy / entity-lookup / validate CLI
 docs/SETUP.md        credentials, GitHub secrets, reverse-proxy notes
@@ -25,8 +26,8 @@ at `dashboard-general`.
 **Home** — the at-a-glance view:
 
 - **Clock** — the built-in `clock` card at the top, no HACS dependency.
-- **Low battery** — `battery-alert-card.yaml`, which hides itself completely
-  unless something is actually low.
+- **Attention** — `attention-card.yaml`: water leaks, sensors that have stopped
+  reporting, low batteries. Renders nothing at all when everything is fine.
 - **Climate** — all six rooms (Living Room, Kitchen, Bedroom, Babyroom, Bath,
   Hall) as a 3-across grid via `climate-table-card.yaml`, with an outdoor
   temperature strip on top. 24-hour statistics graphs below.
@@ -95,9 +96,13 @@ export HA_TOKEN=...
 | `python3 scripts/ha.py validate` | Parse the YAML offline; no credentials needed |
 | `python3 scripts/ha.py dashboards` | List what's in HA and which ones this repo owns |
 | `python3 scripts/ha.py pull` | Snapshot live configs to `dashboards/_pulled/` |
+| `python3 scripts/ha.py pull-automations` | Snapshot UI automations to `automations/_pulled/` |
+| `python3 scripts/ha.py stats` | Which entities have long-term statistics, and which `stat_types` work |
 | `python3 scripts/ha.py entities fountain` | Look up entity IDs |
 | `python3 scripts/ha.py deploy --dry-run` | Check entities without writing |
-| `python3 scripts/ha.py deploy` | Push for real |
+| `python3 scripts/ha.py deploy` | Push dashboards for real |
+| `python3 scripts/ha.py reload` | Reload YAML after editing packages (`--restart` for a full restart) |
+| `HA_SSH_HOST=… scripts/push-packages.sh` | Validate, copy `packages/` over SSH, reload |
 
 `scripts/ha.py` re-runs itself under `venv/` automatically, so plain `python3`
 is correct regardless of what's on your `PATH`.
@@ -109,6 +114,34 @@ else in your instance is left alone. See
 In CI the same `deploy` step runs with `HA_URL` and `HA_TOKEN` repository
 secrets. Deploys overwrite the live dashboard, so edit the YAML here rather than
 in the HA UI.
+
+## Automations
+
+`packages/` holds one HA [package](https://www.home-assistant.io/docs/configuration/packages/)
+per feature — the automation plus any helper entity it needs, kept together in a
+single file so neither can be installed without the other.
+
+| Package | Does |
+|---|---|
+| `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average, notifying on a 35%+ deviation in either direction. A sustained change in a cat's water intake is worth catching early, and it is not something you notice by glancing at a chart. |
+| `bath_humidity.yaml` | Notifies when the bathroom stays above 70% humidity for two hours *and* sits 10+ points above the hall — sustained damp rather than the harmless spike after a shower. |
+| `water_leak.yaml` | High-priority repeating alarm while any `device_class: moisture` sensor is wet, with an all-clear when it dries. The only alert here where minutes matter, so it is deliberately louder than the rest. |
+
+All three push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
+notification, so an alert survives an undelivered push. `notify_target` at the
+top of each automation's variables is the single place to change that.
+
+**These are not deployed by `ha.py deploy`.** The WebSocket API can write
+dashboards but not arbitrary config files, so packages go over SSH instead:
+
+```sh
+HA_SSH_HOST=homeassistant.local scripts/push-packages.sh
+```
+
+which validates, copies and reloads (`--restart` when a package adds a sensor). `ha.py validate` checks them either way — YAML
+syntax, required automation fields, and the filename rule that
+`!include_dir_named` imposes. See [docs/SETUP.md](docs/SETUP.md) for the
+one-time `configuration.yaml` entry.
 
 ## Custom Cards
 
@@ -182,21 +215,32 @@ or none reporting a temperature, the strip omits itself.
 
 **Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#climate).
 
-### Battery Alert Card
+### Attention Card
 
-`battery-alert-card.yaml` — lists any battery at or below 20%, and renders
-nothing whatsoever when they are all healthy.
+`attention-card.yaml` — water leaks, sensors that have stopped reporting, and
+low batteries. Renders nothing whatsoever when everything is fine.
 
 **Requires:** the `html-template-card` custom card (installable via HACS).
 
-It finds batteries by walking every entity with `device_class: battery` instead
-of reading a fixed list, so a newly paired device is covered immediately — a
-hardcoded list would silently stop covering new devices, which is the exact
-failure this card exists to catch. The tradeoff is that iterating `states`
-subscribes the template to all state changes, which is why this pattern is used
-once here rather than in several cards.
+One card rather than three, because these share a job: be impossible to miss
+when they matter and take up no room at all the rest of the time. Groups are
+ordered by how fast you need to act — a leak is measured in floorboards, a low
+battery in days.
 
-Handles both battery flavours: `sensor` (a percentage) and `binary_sensor`
+The **Not reporting** group exists because a sensor that has stopped reporting is
+not "fine", but the climate grid renders it identically to a healthy one. The
+IKEA Thread sensors here drop often enough to warrant an automation pressing
+`identify` on five of them every two hours, so a dropped sensor is a routine
+event worth surfacing rather than an exotic one.
+
+Nothing is a hardcoded entity list: leaks are found by `device_class: moisture`
+and batteries by `device_class: battery`, so a newly paired device is covered
+immediately — a fixed list would silently stop covering new devices, which is
+the exact failure this card exists to catch. The tradeoff is that iterating
+`states` subscribes the template to all state changes, which is why this pattern
+is used once here rather than in several cards.
+
+Batteries handle both flavours: `sensor` (a percentage) and `binary_sensor`
 (`on` = low, no number available). Binary ones sort first, then percentages
 ascending; at or below half the threshold the figure turns red.
 

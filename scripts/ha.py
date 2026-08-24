@@ -23,6 +23,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -84,10 +85,14 @@ MANIFEST = DASHBOARD_DIR / "dashboards.yaml"
 # Snapshots of dashboards as they exist in HA. The leading underscore is a
 # reminder that nothing here is deployed -- only the manifest drives that.
 PULL_DIR = DASHBOARD_DIR / "_pulled"
+PACKAGE_DIR = REPO_ROOT / "packages"
+AUTOMATION_PULL_DIR = REPO_ROOT / "automations" / "_pulled"
 
 # Cloudflare Tunnel drops the occasional connection while cloudflared
 # reconnects, so a cold CI run can hit a 502 that succeeds moments later.
 CONNECT_ATTEMPTS = 4
+# Any non-default value clears Cloudflare's Browser Integrity Check.
+USER_AGENT = "home-assistant-repo-cli/1.0"
 
 
 # ── plumbing ────────────────────────────────────────────────────────────────
@@ -359,6 +364,82 @@ def count_cards(node) -> int:
     return total
 
 
+ENTITY_PATTERN = re.compile(
+    r"\b(?:sensor|binary_sensor|switch|light|climate|automation|input_boolean|"
+    r"input_number|counter|weather|person|device_tracker|number|select|button)"
+    r"\.[a-z0-9_]+"
+)
+
+
+def template_entities(node) -> set[str]:
+    """Entity ids mentioned inside template strings, e.g. states('sensor.x').
+
+    `referenced_entities` only reads structural `entity`/`entities` keys, which
+    misses everything an automation looks up from a template -- and in these
+    packages that is most of them.
+    """
+    found: set[str] = set()
+    if isinstance(node, str):
+        found.update(ENTITY_PATTERN.findall(node))
+    elif isinstance(node, dict):
+        for value in node.values():
+            found |= template_entities(value)
+    elif isinstance(node, list):
+        for item in node:
+            found |= template_entities(item)
+    return found
+
+
+def validate_packages() -> tuple[list[str], list[str]]:
+    """Parse packages/*.yaml and check the automations are well-formed.
+
+    Packages are loaded by HA at startup, not pushed over the websocket like
+    dashboards, so a mistake here surfaces as a failed config load on restart
+    rather than as a deploy error. Worth catching locally.
+    """
+    lines, problems = [], []
+    if not PACKAGE_DIR.is_dir():
+        return lines, problems
+
+    for path in sorted(PACKAGE_DIR.glob("*.yaml")):
+        try:
+            doc = yaml.safe_load(path.read_text())
+        except yaml.YAMLError as exc:
+            problems.append(f"{path.name}: not valid YAML -- {exc}")
+            continue
+        if not isinstance(doc, dict):
+            problems.append(f"{path.name}: a package must be a mapping of domains")
+            continue
+
+        automations = doc.get("automation") or []
+        for index, automation in enumerate(automations):
+            where = f"{path.name}: automation {index}"
+            for field in ("id", "alias"):
+                if not automation.get(field):
+                    problems.append(f"{where} is missing '{field}'")
+            # HA renamed these in 2024.10 (trigger -> triggers, action ->
+            # actions) and still accepts both, so require one spelling of each
+            # rather than a specific one.
+            for old_key, new_key in (("trigger", "triggers"), ("action", "actions")):
+                if not automation.get(old_key) and not automation.get(new_key):
+                    problems.append(f"{where} is missing '{new_key}'")
+            # `!include_dir_named` uses the filename as the package name, so a
+            # duplicate filename silently overwrites another package.
+            if "-" in path.stem:
+                problems.append(
+                    f"{path.name}: package names come from the filename; "
+                    f"use underscores so '{path.stem}' is a valid key"
+                )
+
+        entities = referenced_entities(doc) | template_entities(doc)
+        entities = {e for e in entities if not e.startswith("automation.")}
+        lines.append(
+            f"ok  {path.name:<28} {len(automations)} automation(s), "
+            f"{len(doc.get('sensor') or [])} sensor(s), {len(entities)} entit(y|ies)"
+        )
+    return lines, problems
+
+
 def lint_card_styles() -> list[str]:
     """Flag CSS in html-template-cards that would style OTHER cards.
 
@@ -408,7 +489,11 @@ def cmd_validate(_args) -> int:
             f"{cards} card(s), {len(entities)} entit(y|ies)"
         )
 
-    problems = lint_card_styles()
+    package_lines, package_problems = validate_packages()
+    for line in package_lines:
+        print(line)
+
+    problems = lint_card_styles() + package_problems
     for problem in problems:
         print(f"ERROR  {problem}", file=sys.stderr)
     return 1 if problems else 0
@@ -435,6 +520,253 @@ def cmd_entities(args) -> int:
     width = max(len(r[0]) for r in rows)
     for entity_id, value, name in sorted(rows):
         print(f"{entity_id:<{width}}  {value:>10}  {name}")
+    return 0
+
+
+def http_get_json(base_url: str, path: str, token: str, headers: dict):
+    """One-off REST GET.
+
+    Everything else here speaks WebSocket, but automation configs are only
+    reachable over REST -- `/api/config/automation/config/<id>` is what the
+    frontend's own editor calls. There is no WebSocket equivalent.
+    """
+    import urllib.error
+    import urllib.request
+
+    # urllib defaults to a "Python-urllib/3.x" User-Agent, which Cloudflare's
+    # Browser Integrity Check treats as a bot signature and refuses with error
+    # 1010 before the request ever reaches Home Assistant. The WebSocket path is
+    # unaffected because websocket-client sends its own. Anything that is not
+    # the urllib default gets through.
+    request = urllib.request.Request(
+        base_url.rstrip("/") + path,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "User-Agent": USER_AGENT,
+            **headers,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        # 404 means the automation is not UI-editable -- it came from YAML, so
+        # it already lives in a file and there is nothing to pull.
+        if exc.code == 404:
+            return None
+
+        # The body is the only thing that says WHO refused. Home Assistant
+        # answers with a short JSON/text message; Cloudflare Access answers with
+        # an HTML login page. A bare status code cannot tell them apart.
+        try:
+            body = exc.read().decode("utf-8", "replace").strip()
+        except Exception:  # noqa: BLE001 -- diagnostics only, never fatal
+            body = ""
+        body = " ".join(body.split())[:300]
+
+        if exc.code == 403:
+            lowered = body.lower()
+            # Cloudflare answers with a bare "error code: NNNN" as often as it
+            # does an HTML page, so matching on markup alone misreads it as a
+            # Home Assistant refusal.
+            cf_code = re.search(r"error code:\s*(\d{4})", lowered)
+            edge = bool(cf_code) or any(
+                marker in lowered
+                for marker in ("<html", "cloudflare", "access denied", "<!doctype")
+            )
+            if cf_code and cf_code.group(1) == "1010":
+                hint = (
+                    "Cloudflare error 1010 -- its Browser Integrity Check "
+                    "refused the request's User-Agent before it reached Home "
+                    "Assistant. Nothing is wrong with the token. This client "
+                    "now sends a real User-Agent; if it still happens, add a "
+                    "WAF skip rule for /api/* or turn off Browser Integrity "
+                    "Check for this hostname."
+                )
+            elif edge:
+                hint = (
+                    "the reverse proxy refused it, not Home Assistant"
+                    + (f" (Cloudflare error {cf_code.group(1)})" if cf_code else "")
+                    + " -- the WebSocket got through, so a policy likely covers "
+                    "/api/* but not /api/websocket. Set CF_ACCESS_CLIENT_ID and "
+                    "CF_ACCESS_CLIENT_SECRET, or widen the policy."
+                )
+            else:
+                hint = (
+                    "Home Assistant refused it. This endpoint is @require_admin, "
+                    "so the long-lived token must belong to an ADMIN user. "
+                    "Check Settings > People > the token's user > Advanced Mode "
+                    "/ Administrator, or re-issue the token from an admin "
+                    "account. Failing that, copy config/automations.yaml off the "
+                    "instance directly (see docs/SETUP.md)."
+                )
+            raise TransportError(
+                redact_host(f"HTTP 403 for {path} -- {hint}"
+                            + (f" [server said: {body}]" if body else ""), base_url),
+                retryable=False,
+            ) from exc
+
+        raise TransportError(
+            redact_host(
+                f"HTTP {exc.code} for {path}" + (f" -- {body}" if body else ""),
+                base_url,
+            ),
+            retryable=not (400 <= exc.code < 500),
+        ) from exc
+
+
+def slugify(text: str) -> str:
+    """Filename from a friendly name. Names here include emoji and accents."""
+    ascii_only = text.encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "_", ascii_only.lower()).strip("_")
+    return slug or "automation"
+
+
+def cmd_pull_automations(_args) -> int:
+    """Snapshot every UI-editable automation into automations/_pulled/.
+
+    Written package-shaped -- each file is a complete `automation:` list -- so a
+    snapshot can be moved straight into packages/ once you want it under
+    version control rather than edited in the UI.
+    """
+    url, token = os.environ.get("HA_URL"), os.environ.get("HA_TOKEN")
+    ha = client_from_env()
+    print(f"# connected to Home Assistant {ha.version}", file=sys.stderr)
+    states = ha.command("get_states")
+    headers = access_headers()
+    AUTOMATION_PULL_DIR.mkdir(parents=True, exist_ok=True)
+
+    pulled, yaml_defined, used = 0, [], {}
+    for state in sorted(states, key=lambda s: s["entity_id"]):
+        if not state["entity_id"].startswith("automation."):
+            continue
+        attributes = state.get("attributes", {})
+        name = attributes.get("friendly_name", state["entity_id"])
+        automation_id = attributes.get("id")
+        if not automation_id:
+            yaml_defined.append(name)
+            continue
+
+        config = http_get_json(
+            url, f"/api/config/automation/config/{automation_id}", token, headers
+        )
+        if config is None:
+            yaml_defined.append(name)
+            continue
+
+        config.setdefault("id", automation_id)
+        # Stripping emoji and accents can collapse two different names onto one
+        # slug; without this the second silently overwrites the first.
+        slug = slugify(name)
+        used[slug] = used.get(slug, 0) + 1
+        if used[slug] > 1:
+            slug = f"{slug}_{used[slug]}"
+        target = AUTOMATION_PULL_DIR / f"{slug}.yaml"
+        target.write_text(
+            yaml.safe_dump(
+                {"automation": [config]},
+                sort_keys=False,
+                allow_unicode=True,
+                default_flow_style=False,
+            )
+        )
+        print(f"pulled  {name:<44} -> {target.relative_to(REPO_ROOT)}")
+        pulled += 1
+
+    print(f"\n{pulled} automation(s) written to {AUTOMATION_PULL_DIR.relative_to(REPO_ROOT)}",
+          file=sys.stderr)
+    if yaml_defined:
+        print(
+            "not pulled (already defined in YAML, not UI-editable): "
+            + ", ".join(yaml_defined),
+            file=sys.stderr,
+        )
+
+    report_registry_ids(ha)
+    ha.close()
+    return 0
+
+
+REGISTRY_ID = re.compile(r"\b[0-9a-f]{32}\b")
+
+
+def report_registry_ids(ha) -> None:
+    """Translate the opaque ids UI device triggers leave behind.
+
+    A trigger built in the UI stores `device_id: 3ea027df...` and an entity
+    REGISTRY id rather than an entity_id, so a pulled automation is unreadable
+    and, worse, silently stops working if the device is ever re-paired. This
+    says what each id currently points at, which is what you need in order to
+    rewrite the trigger against a stable entity_id.
+    """
+    ids: set[str] = set()
+    for path in sorted(AUTOMATION_PULL_DIR.glob("*.yaml")):
+        ids |= set(REGISTRY_ID.findall(path.read_text()))
+    if not ids:
+        return
+
+    try:
+        entities = ha.command("config/entity_registry/list") or []
+        devices = ha.command("config/device_registry/list") or []
+    except CommandError as exc:
+        print(f"# could not read the registries: {exc}", file=sys.stderr)
+        return
+
+    by_entity = {e.get("id"): e for e in entities}
+    by_device = {d.get("id"): d for d in devices}
+
+    print("\nopaque registry ids found in the pulled automations:", file=sys.stderr)
+    for opaque in sorted(ids):
+        entry = by_entity.get(opaque)
+        if entry:
+            label = entry.get("name") or entry.get("original_name") or ""
+            print(f"  {opaque}  entity  {entry.get('entity_id')}  {label}")
+            continue
+        device = by_device.get(opaque)
+        if device:
+            label = device.get("name_by_user") or device.get("name") or ""
+            owned = sorted(
+                e.get("entity_id") for e in entities if e.get("device_id") == opaque
+            )
+            print(f"  {opaque}  device  {label}")
+            for entity_id in owned:
+                print(f"  {'':32}          {entity_id}")
+            continue
+        print(f"  {opaque}  UNKNOWN -- no longer in either registry")
+    print(
+        "\nA UI device trigger breaks silently if the device is re-paired. "
+        "Rewrite these against the entity_id above before moving the automation "
+        "into packages/.",
+        file=sys.stderr,
+    )
+
+
+def cmd_reload(args) -> int:
+    """Reload YAML config, or restart outright.
+
+    `homeassistant.reload_all` picks up changed automations and templates
+    without downtime, which covers most package edits. It does NOT pick up a
+    newly added platform-based sensor -- the statistics sensor in
+    cat_water_anomaly.yaml is exactly that -- so a package adding one needs
+    --restart the first time.
+    """
+    ha = client_from_env()
+    print(f"# connected to Home Assistant {ha.version}", file=sys.stderr)
+
+    service = "restart" if args.restart else "reload_all"
+    try:
+        ha.command("call_service", domain="homeassistant", service=service)
+    except (TransportError, OSError, ValueError):
+        # A restart tears down the socket, often before the result arrives.
+        # For reload_all that would be a real fault, so only forgive it here.
+        if not args.restart:
+            raise
+        print("restart requested; connection closed as expected", file=sys.stderr)
+        return 0
+    finally:
+        ha.close()
+
+    print(f"homeassistant.{service} called")
     return 0
 
 
@@ -647,6 +979,22 @@ def main() -> int:
     deploy.set_defaults(func=cmd_deploy)
 
     subparsers.add_parser(
+        "pull-automations",
+        help="snapshot UI automations into automations/_pulled/",
+    ).set_defaults(func=cmd_pull_automations)
+
+    reload = subparsers.add_parser(
+        "reload", help="reload YAML config (or --restart) after editing packages"
+    )
+    reload.add_argument(
+        "--restart",
+        action="store_true",
+        help="full restart instead of a reload; needed when a package adds a "
+             "new platform sensor. Brief downtime.",
+    )
+    reload.set_defaults(func=cmd_reload)
+
+    subparsers.add_parser(
         "stats",
         help="check which dashboard entities have long-term statistics",
     ).set_defaults(func=cmd_stats)
@@ -668,7 +1016,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         return args.func(args)
-    except CommandError as exc:
+    except (CommandError, TransportError) as exc:
         fail(str(exc))
 
 

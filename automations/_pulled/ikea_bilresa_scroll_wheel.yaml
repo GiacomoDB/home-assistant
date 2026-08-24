@@ -1,0 +1,24 @@
+automation:
+- id: '1773352933662'
+  alias: Ikea_bilresa_scroll_wheel
+  description: ''
+  use_blueprint:
+    path: jhol-byte/Ikea_bilresa_scroll_wheel.yaml
+    input:
+      remote: 804b2d81c3b02d6113401ceea0c73cd0
+      click_action_ch1:
+      - action: light.toggle
+        metadata: {}
+        target:
+          entity_id: light.kajplats_e27_ws_globe_1521lm
+        data: {}
+      scroll_wheel_target_ch1:
+      - light.kajplats_e27_ws_globe_1521lm
+      click_action_ch2:
+      - action: light.toggle
+        metadata: {}
+        target:
+          entity_id: light.kajplats_e14_ws_globe_806lm
+        data: {}
+      scroll_wheel_target_ch2:
+      - light.kajplats_e14_ws_globe_806lm

@@ -1,0 +1,24 @@
+automation:
+- id: '1775501584668'
+  alias: 'Night light '
+  description: ''
+  triggers:
+  - trigger: time
+    at: '19:30:00'
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+    - sat
+    - sun
+  conditions: []
+  actions:
+  - action: light.toggle
+    metadata: {}
+    data:
+      brightness_pct: 90
+    target:
+      entity_id: light.kajplats_e14_ws_globe_806lm
+  mode: single

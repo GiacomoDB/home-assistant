@@ -1,0 +1,117 @@
+# Cat water intake anomaly -- an early-warning signal, not a dashboard widget.
+#
+# A sustained change in how much a cat drinks is worth noticing early, and it is
+# exactly the kind of drift you do not spot by glancing at a chart. This watches
+# it for you and pushes to your phone.
+#
+# WHY YESTERDAY AND NOT TODAY
+# Comparing a part-finished day against seven complete ones always reads low --
+# at 09:00 today's total is a fraction of a full day no matter how much the cat
+# drinks. So this compares yesterday's COMPLETE total against the trailing
+# average and runs after midnight. The one-day delay costs nothing: the signal
+# being looked for is a sustained shift, not a single event.
+#
+# WHY A STATISTICS SENSOR
+# `yesterday_s_water_consumption` already holds one clean daily total and changes
+# once a day, so a statistics sensor over it with max_age 7d is a 7-day mean of
+# daily totals. Averaging the raw `today_s_...` sensor instead would be
+# meaningless -- it ramps from 0 and resets at midnight.
+#
+# PHONE NOTIFICATIONS
+# `notify.notify` fans out to every notify platform, which includes the
+# companion app, so this reaches your phone as-is. Pinning it to one device is
+# better -- it stops the alert going to every notifier you ever configure, and
+# unlocks the companion-only options below. Find yours with:
+#
+#     python3 scripts/ha.py entities 'notify.*'
+#
+# then set `notify_target` below to e.g. notify.mobile_app_giacomo_phone and add:
+#
+#     data:
+#       tag: cat-water-anomaly   # replaces the previous alert instead of stacking
+#       channel: Pet health      # Android: its own notification channel
+#
+# A persistent notification is always created as well, so the alert survives a
+# missed or undelivered push and stays visible in the HA sidebar.
+
+sensor:
+  - platform: statistics
+    name: Cat water 7 day average
+    unique_id: cat_water_7_day_average
+    entity_id: sensor.dockstream_smart_fountain_yesterday_s_water_consumption
+    state_characteristic: mean
+    max_age:
+      days: 7
+    sampling_size: 100
+    precision: 0
+
+automation:
+  - id: cat_water_intake_anomaly
+    alias: "Cat: water intake anomaly"
+    description: >-
+      Compares yesterday's completed water intake against the trailing 7-day
+      average and notifies when it deviates beyond the threshold.
+    mode: single
+    triggers:
+      # 00:30 rather than 00:00: the integration needs to have rolled today's
+      # total into the yesterday sensor before this reads it.
+      - trigger: time
+        at: "00:30:00"
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ states('sensor.dockstream_smart_fountain_yesterday_s_water_consumption') | is_number
+             and states('sensor.cat_water_7_day_average') | is_number }}
+      # Sanity floor. A near-zero average means the fountain was unplugged or the
+      # integration was down, and every comparison against it reads as a huge
+      # percentage swing.
+      - condition: numeric_state
+        entity_id: sensor.cat_water_7_day_average
+        above: 50
+      # Stay quiet until roughly a week of history exists, otherwise the first
+      # few days compare against an average made of one or two samples.
+      - condition: template
+        value_template: >-
+          {{ state_attr('sensor.cat_water_7_day_average', 'age_coverage_ratio')
+             | default(1, true) | float(1) >= 0.8 }}
+    actions:
+      - variables:
+          notify_target: notify.mobile_app_pixel_8_pro
+          threshold_pct: 35
+          yesterday_ml: >-
+            {{ states('sensor.dockstream_smart_fountain_yesterday_s_water_consumption') | float }}
+          average_ml: "{{ states('sensor.cat_water_7_day_average') | float }}"
+          sessions: >-
+            {{ states('sensor.dockstream_smart_fountain_yesterday_s_total_drinking_times') }}
+          deviation_pct: >-
+            {{ ((yesterday_ml | float - average_ml | float) / (average_ml | float) * 100) | round(0) | int }}
+          direction: "{{ 'up' if deviation_pct | int > 0 else 'down' }}"
+          summary: >-
+            Yesterday {{ yesterday_ml | float | round(0) | int }} mL
+            ({{ direction }} {{ deviation_pct | int | abs }}% vs the 7-day
+            average of {{ average_ml | float | round(0) | int }} mL){% if sessions | is_number %}
+            across {{ sessions | int }} visits{% endif %}.
+      - condition: template
+        value_template: "{{ deviation_pct | int | abs >= threshold_pct | int }}"
+      # continue_on_error so a missing or misconfigured notify service still
+      # leaves the persistent notification below.
+      - action: "{{ notify_target }}"
+        continue_on_error: true
+        data:
+          data:
+            # Matches the convention already used by "Acqua gatto notifica".
+            channel: Pet Alerts
+            importance: high
+            # Replaces the previous alert rather than stacking a new one.
+            tag: cat-water-anomaly
+          title: "Cat drinking {{ direction }} {{ deviation_pct | int | abs }}%"
+          message: >-
+            {{ summary }} One odd day is usually nothing; several in a row is
+            the part worth mentioning to a vet.
+      - action: persistent_notification.create
+        data:
+          title: "Cat drinking {{ direction }} {{ deviation_pct | int | abs }}%"
+          notification_id: cat_water_anomaly
+          message: >-
+            {{ summary }} One odd day is usually nothing; several in a row is
+            the part worth mentioning to a vet.

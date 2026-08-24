@@ -1,0 +1,21 @@
+automation:
+- id: '1775687322360'
+  alias: Acqua gatto notifica
+  description: Notifica quando l'acqua della fontana scende sotto il 20%
+  triggers:
+  - trigger: numeric_state
+    entity_id:
+    - sensor.dockstream_smart_fountain_remaining_water_2
+    below: 20
+    for:
+      minutes: 5
+  conditions: []
+  actions:
+  - action: notify.mobile_app_pixel_8_pro
+    data:
+      title: Acqua gatto sotto il 20%!
+      message: Pulisci e riempi la fontana
+      data:
+        importance: high
+        channel: Pet Alerts
+  mode: single

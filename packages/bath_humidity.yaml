@@ -1,0 +1,81 @@
+# Bathroom humidity staying high -- the condition that grows mould.
+#
+# The spike after a shower is not the problem; 90% for twenty minutes is normal
+# and harmless. Mould needs humidity sustained above roughly 65-70%, so this
+# triggers only when the bathroom is STILL above the threshold two hours later,
+# which means the moisture is not clearing.
+#
+# WHY IT ALSO COMPARES AGAINST THE HALL
+# An absolute threshold alone fires on damp weather, when the whole flat sits at
+# 70% and the bathroom is not actually the problem. Requiring the bathroom to be
+# at least 10 points above the hall makes this "the bathroom is holding
+# moisture" rather than "it is a humid day". The hall is the nearest room with
+# no water in it, which is what makes it a fair baseline.
+#
+# TUNING
+# Every number lives in the trigger and conditions below:
+#   threshold  70%  -- the mould-risk line
+#   for        2h   -- how long it must persist
+#   gap        10pt -- how far above the hall before it counts as local
+# A bathroom with poor ventilation may need the gap raised to stop it nagging.
+#
+# PHONE NOTIFICATIONS
+# `notify.notify` reaches the companion app as-is. To pin it to one device, find
+# yours with `python3 scripts/ha.py entities 'notify.*'` and set `notify_target`
+# below. The re-alert guard means this can notify at most once every 6 hours, so
+# a persistently damp bathroom does not produce a stream of notifications.
+
+automation:
+  - id: bath_humidity_sustained
+    alias: "Bath: humidity staying high"
+    description: >-
+      Notifies when bathroom humidity stays above the mould-risk threshold for
+      two hours and is well above the hall, indicating moisture is not clearing.
+    mode: single
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.timmerflotte_temp_hmd_sensor_humidity_5
+        above: 70
+        for:
+          hours: 2
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ states('sensor.timmerflotte_temp_hmd_sensor_humidity_5') | is_number
+             and states('sensor.timmerflotte_temp_hmd_sensor_humidity_3') | is_number }}
+      # Local moisture, not a humid day everywhere.
+      - condition: template
+        value_template: >-
+          {{ (states('sensor.timmerflotte_temp_hmd_sensor_humidity_5') | float
+              - states('sensor.timmerflotte_temp_hmd_sensor_humidity_3') | float) >= 10 }}
+      # At most one alert per 6 hours. `this` refers to the automation itself, so
+      # no helper entity is needed to remember when it last fired.
+      - condition: template
+        value_template: >-
+          {% set last = this.attributes.get('last_triggered') %}
+          {{ last is none or (now() - last).total_seconds() > 21600 }}
+    actions:
+      - variables:
+          notify_target: notify.mobile_app_pixel_8_pro
+          bath: "{{ states('sensor.timmerflotte_temp_hmd_sensor_humidity_5') | float | round(0) | int }}"
+          hall: "{{ states('sensor.timmerflotte_temp_hmd_sensor_humidity_3') | float | round(0) | int }}"
+          summary: >-
+            Bathroom has been above 70% for two hours and is now {{ bath }}%,
+            against {{ hall }}% in the hall. Open a window or run the extractor
+            -- this is the condition mould needs.
+      - action: "{{ notify_target }}"
+        continue_on_error: true
+        data:
+          data:
+            # Matches the convention already used by "Acqua gatto notifica".
+            channel: Home Alerts
+            importance: default
+            # Replaces the previous alert rather than stacking a new one.
+            tag: bath-humidity
+          title: "Bathroom damp: {{ bath }}%"
+          message: "{{ summary }}"
+      - action: persistent_notification.create
+        data:
+          title: "Bathroom damp: {{ bath }}%"
+          notification_id: bath_humidity_sustained
+          message: "{{ summary }}"

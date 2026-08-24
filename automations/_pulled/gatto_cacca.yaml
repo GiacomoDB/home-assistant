@@ -1,0 +1,48 @@
+automation:
+- id: '1766240589667'
+  alias: Gatto cacca
+  description: ''
+  triggers:
+  - type: occupied
+    device_id: 3ea027dfc4ee13282471c8dabfbaead2
+    entity_id: 2904242537945a965debd27a9c93e60c
+    domain: binary_sensor
+    trigger: device
+  conditions: []
+  actions:
+  - action: switch.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.lampadina
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 1
+      milliseconds: 0
+  - action: switch.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.lampadina
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 1
+      milliseconds: 0
+  - action: switch.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.lampadina
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 1
+      milliseconds: 0
+  - action: switch.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.lampadina
+  mode: single

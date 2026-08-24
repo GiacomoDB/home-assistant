@@ -1,0 +1,16 @@
+automation:
+- id: '1766250814768'
+  alias: Tree click
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id:
+    - event.bilresa_scroll_wheel_button_6
+  conditions: []
+  actions:
+  - action: switch.toggle
+    metadata: {}
+    target:
+      entity_id: switch.tree
+    data: {}
+  mode: single

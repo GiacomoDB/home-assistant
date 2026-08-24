@@ -1,0 +1,16 @@
+automation:
+- id: '1773325061104'
+  alias: Switch bajour
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id:
+    - event.bilresa_scroll_wheel_button_9
+  conditions: []
+  actions:
+  - action: light.toggle
+    metadata: {}
+    target:
+      entity_id: light.kajplats_e14_ws_globe_806lm
+    data: {}
+  mode: single

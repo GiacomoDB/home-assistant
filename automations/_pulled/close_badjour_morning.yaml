@@ -1,0 +1,23 @@
+automation:
+- id: '1775444782778'
+  alias: 'Close badjour morning '
+  description: ''
+  triggers:
+  - trigger: time
+    at: 06:50:00
+    weekday:
+    - sun
+    - sat
+    - fri
+    - thu
+    - wed
+    - tue
+    - mon
+  conditions: []
+  actions:
+  - action: light.turn_off
+    metadata: {}
+    target:
+      entity_id: light.kajplats_e14_ws_globe_806lm
+    data: {}
+  mode: single

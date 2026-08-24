@@ -87,9 +87,22 @@ This device also provides the Bedroom temperature and humidity above.
 
 ---
 
+## Water leak
+
+| Entity ID | Notes |
+|---|---|
+| `binary_sensor.klippbok_water_leak_sensor_water_leak` | Under the kitchen sink. `on` = wet |
+
+Neither `attention-card.yaml` nor `packages/water_leak.yaml` names it. Both find
+leak sensors by `device_class: moisture`, so a second one is covered the moment
+it is paired — which for a leak alarm matters more than the precision of a fixed
+list. It is recorded here so the set is known, not because anything reads it.
+
+---
+
 ## Batteries
 
-Not enumerated here on purpose. `battery-alert-card.yaml` discovers batteries at
+Not enumerated here on purpose. `attention-card.yaml` discovers batteries at
 render time by walking every entity with `device_class: battery`, covering both
 `sensor` (percentage) and `binary_sensor` (`on` = low). A list written down here
 would go stale the next time a device is paired, and staleness is the specific
@@ -104,8 +117,12 @@ python scripts/ha.py entities battery
 Battery-powered devices in this instance: the IKEA Timmerflotte temp/humidity
 sensors, the Bilresa scroll wheels, the Tado TRVs and the Alpstuga monitor.
 
+A battery sensor that is `unavailable` or `unknown` is listed under **Not
+reporting** rather than skipped. It used to be filtered out by the numeric
+check, which made a dropped Thread sensor and a healthy one look identical.
+
 **Threshold:** at or below 20% is listed; at or below 10% renders red. Both live
-in `battery-alert-card.yaml` as the `threshold` variable at the top.
+in `attention-card.yaml` as the `threshold` variable at the top.
 
 **Ignored devices.** Some mains-powered devices still expose a battery entity
 and park it at 0. The Granary feeder is plugged in and reports 0%, which is a

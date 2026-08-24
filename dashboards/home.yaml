@@ -73,12 +73,13 @@ views:
               clock_size: medium
               no_background: true
 
-            # ─────────────────────── LOW BATTERY ──────────────────────────
-            # Sits high on purpose: it hides itself entirely while every
-            # battery is healthy, so it only ever costs space when it has
-            # something to say. Discovers batteries by device_class rather
-            # than by a fixed entity list — see the card file.
-            - !include ../battery-alert-card.yaml
+            # ───────────────────────── ATTENTION ──────────────────────────
+            # Water leaks, sensors that have stopped reporting, low batteries.
+            # Sits high on purpose: it hides itself entirely when nothing is
+            # wrong, so it only ever costs space when it has something to say.
+            # Everything is discovered by device_class rather than by a fixed
+            # entity list — see the card file.
+            - !include ../attention-card.yaml
 
             # ─────────────────────────── CLIMATE ──────────────────────────
             # Room readings are a single table card: room name, temperature and
