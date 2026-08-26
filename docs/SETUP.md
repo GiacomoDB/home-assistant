@@ -240,17 +240,22 @@ from the same Security tab that created it.
 
 ## 4. Custom cards (HACS)
 
-The dashboard in `dashboards/home.yaml` uses **only native HA cards** and needs
-nothing installed. The standalone cards at the repo root do have dependencies:
+`dashboards/home.yaml` needs **three HACS frontend cards**. Without them the
+affected cards render as a red error box, so install these before the first
+deploy:
 
-| Card | Needs |
+| HACS card | Used by |
 |---|---|
-| `petlibro-fountain-card.yaml` | [`html-template-card`](https://github.com/PiotrMachowski/Home-Assistant-Lovelace-HTML-Jinja2-Template-card) (HACS) |
-| `petlibro-fountain-chart-card.yaml` | [`apexcharts-card`](https://github.com/RomRider/apexcharts-card) (HACS) |
-| `eink-sensor-card.js` | Copy to `config/www/`, add as a dashboard resource |
+| [`html-template-card`](https://github.com/PiotrMachowski/Home-Assistant-Lovelace-HTML-Jinja2-Template-card) | `attention-card.yaml`, `climate-table-card.yaml`, `energy-card.yaml`, `petlibro-water-level-card.yaml`, `petlibro-fountain-card.yaml` |
+| [`apexcharts-card`](https://github.com/RomRider/apexcharts-card) | `petlibro-fountain-chart-card.yaml` |
+| [`card-mod`](https://github.com/thomasloven/lovelace-card-mod) | the `custom:mod-card` wrapper on every view, which supplies the side margins |
 
-`dashboards/home.yaml` additionally needs `card-mod`, which supplies the side
-margins on its panel views.
+Everything else on the dashboard is native: the `clock`, `heading`, `tile`,
+`grid`, `light`, `history-graph` and `statistics-graph` cards all ship with HA.
+
+`eink-sensor-card.js` is not a HACS card — copy it to `config/www/` and add it
+as a dashboard resource. It is used only by the Kindle dashboard, which this
+repo does not manage.
 
 
 ---

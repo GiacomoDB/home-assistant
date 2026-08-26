@@ -100,6 +100,21 @@ list. It is recorded here so the set is known, not because anything reads it.
 
 ---
 
+## Derived entities created by this repo
+
+Not from any integration — these are created by the packages in `packages/` and
+will not exist until those are installed (see [SETUP.md](SETUP.md#packages-automations)).
+
+| Entity ID | Created by | Meaning |
+|---|---|---|
+| `sensor.cat_water_7_day_average` | `packages/cat_water_anomaly.yaml` | Trailing 7-day mean of daily fountain intake, from a `statistics` sensor over `yesterday_s_water_consumption` |
+
+It reads empty for roughly the first week, and the automation stays deliberately
+silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an
+average built from one or two days.
+
+---
+
 ## Batteries
 
 Not enumerated here on purpose. `attention-card.yaml` discovers batteries at
@@ -194,4 +209,4 @@ entity ID here once created.
 
 | Entity ID | Purpose |
 |---|---|
-| _(not yet recorded)_ | Daily boost lockout for the center-button blueprint |
+| `input_boolean.thermostat_boost_used` | Daily boost lockout for the center-button blueprint |

@@ -6,9 +6,12 @@ Assistant by GitHub Actions on every push to `main`.
 
 ```
 dashboards/          dashboard configs + the manifest that maps them to HA
-packages/            automations + their helper entities — copied to HA by hand
+packages/            automations + their helper entities — pushed over SSH
+automations/_pulled/ read-only snapshots of the automations still owned by the
+                     HA UI; move one into packages/ to take it under version control
 themes/              theme files — copied to HA by hand, not deployable
 scripts/ha.py        deploy / entity-lookup / validate CLI
+scripts/push-packages.sh  validate + copy packages/ over SSH + reload
 docs/SETUP.md        credentials, GitHub secrets, reverse-proxy notes
 docs/ENTITIES.md     every entity ID this repo depends on
 .github/workflows/   the deploy pipeline
