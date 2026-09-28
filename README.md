@@ -42,7 +42,9 @@ at `dashboard-general`.
 
 **Fountain** — the detail: the `html-template-card` stat card, the `apexcharts`
 today-vs-yesterday chart, and 30-day daily-total bar charts for water drunk and
-drinking sessions.
+drinking sessions. Below that, **Litter Box**: today's visit count, when the box
+was last used, a 24-hour timeline from the occupancy sensor by the box, and 30
+days of daily visits. The counts need `packages/litter_box.yaml` installed.
 
 **Buttons** — the light and switch buttons.
 
@@ -130,9 +132,10 @@ single file so neither can be installed without the other.
 |---|---|
 | `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average, notifying on a 35%+ deviation in either direction. A sustained change in a cat's water intake is worth catching early, and it is not something you notice by glancing at a chart. |
 | `bath_humidity.yaml` | Notifies when the bathroom stays above 70% humidity for two hours *and* sits 10+ points above the hall — sustained damp rather than the harmless spike after a shower. |
+| `litter_box.yaml` | No automation — just a `history_stats` sensor counting today's litter box visits, because the occupancy sensor alone has no statistics to chart. |
 | `water_leak.yaml` | High-priority repeating alarm while any `device_class: moisture` sensor is wet, with an all-clear when it dries. The only alert here where minutes matter, so it is deliberately louder than the rest. |
 
-All three push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
+The three alerts push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
 notification, so an alert survives an undelivered push. `notify_target` at the
 top of each automation's variables is the single place to change that.
 

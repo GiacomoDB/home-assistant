@@ -38,6 +38,14 @@ logic in `petlibro-fountain-card.yaml` — keep the two in sync if you change on
 
 ---
 
+## Litter box
+
+| Entity ID | Meaning |
+|---|---|
+| `binary_sensor.myggspray_wrlss_mtn_sensor_occupancy` | Occupancy sensor by the litter box — device `3ea027dfc4ee13282471c8dabfbaead2`. `on` = cat in the box. Also the trigger of the UI automation `automations/_pulled/gatto_cacca.yaml`. |
+
+---
+
 ## Climate
 
 Six rooms. Recovered from the pre-merge dashboards and all confirmed present
@@ -108,6 +116,7 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | Entity ID | Created by | Meaning |
 |---|---|---|
 | `sensor.cat_water_7_day_average` | `packages/cat_water_anomaly.yaml` | Trailing 7-day mean of daily fountain intake, from a `statistics` sensor over `yesterday_s_water_consumption` |
+| `sensor.litter_box_visits_today` | `packages/litter_box.yaml` | Occupied transitions of the litter box sensor since midnight, from `history_stats` |
 
 It reads empty for roughly the first week, and the automation stays deliberately
 silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an

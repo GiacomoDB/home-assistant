@@ -1,0 +1,27 @@
+# Litter box visits -- the helper behind the Litter Box section of the Fountain
+# view in dashboards/home.yaml.
+#
+# The occupancy sensor next to the box only says "occupied" or "clear". A
+# dashboard can draw that as a timeline, but it cannot count it: statistics-graph
+# needs a numeric sensor with long-term statistics, and a binary_sensor has none.
+# This history_stats sensor turns the day's on-transitions into a number, which
+# gets a state_class and therefore 30 days of daily totals on the dashboard.
+#
+# Like the fountain's `today_s_...` sensors it is cumulative since midnight and
+# resets at 00:00, so the day's total is its daily `max` -- see the 30-day chart
+# comments in dashboards/home.yaml.
+#
+# ONE VISIT, ONE COUNT?
+# Only if the sensor holds `on` for the whole visit. If yours drops to clear
+# mid-visit and re-triggers (a short occupancy timeout), each visit counts two
+# or three times -- check the timeline on the dashboard against a visit you saw.
+
+sensor:
+  - platform: history_stats
+    name: Litter box visits today
+    unique_id: litter_box_visits_today
+    entity_id: binary_sensor.myggspray_wrlss_mtn_sensor_occupancy
+    state: "on"
+    type: count
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"

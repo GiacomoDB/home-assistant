@@ -281,6 +281,51 @@ views:
                 - entity: sensor.dockstream_smart_fountain_today_s_total_drinking_times
                   name: Drinking sessions
 
+            # ─────────────────────────── LITTER BOX ───────────────────────
+            # An occupancy sensor by the box; every `on` is a visit. The
+            # count comes from packages/litter_box.yaml -- a binary_sensor has
+            # no statistics of its own, so without that package the two
+            # count cards stay empty while the timeline still works.
+            - type: heading
+              heading: Litter Box
+              heading_style: subtitle
+              icon: mdi:circle
+            - type: grid
+              columns: 2
+              square: false
+              cards:
+                - type: tile
+                  entity: sensor.litter_box_visits_today
+                  name: Visits today
+                  icon: mdi:circle
+                # last_changed rather than the state: "Clear" says nothing,
+                # when the box was last used does.
+                - type: tile
+                  entity: binary_sensor.myggspray_wrlss_mtn_sensor_occupancy
+                  name: Last visit
+                  icon: mdi:circle
+                  state_content: last_changed
+            # Recorder history rather than statistics, so each visit shows as
+            # its own block -- and it only reaches back purge_keep_days.
+            - type: history-graph
+              title: Last 24 hours
+              hours_to_show: 24
+              entities:
+                - entity: binary_sensor.myggspray_wrlss_mtn_sensor_occupancy
+                  name: Litter box
+            # Same shape as the fountain charts above: a since-midnight total,
+            # so max/change -- whichever the state_class resolves to.
+            - type: statistics-graph
+              days_to_show: 30
+              period: day
+              chart_type: bar
+              stat_types:
+                - max
+                - change
+              entities:
+                - entity: sensor.litter_box_visits_today
+                  name: Litter box visits
+
   # ═════════════════════════════ BUTTONS ══════════════════════════════
   # Copied from dashboard-giacomo. The two placeholder "New section"
   # headings and the trailing empty section were dropped. The buttons keep
