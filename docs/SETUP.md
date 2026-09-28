@@ -345,6 +345,13 @@ Use `--restart` the first time, and any time a package **adds** a `sensor:`
 block: `reload_all` picks up changed automations and templates, but not a newly
 added platform sensor such as the statistics sensor in `cat_water_anomaly.yaml`.
 
+`--restart` runs `ha core check && ha core restart` over SSH, so it needs no
+token. The plain reload still goes through `ha.py` and the WebSocket API, so it
+needs `HA_URL`/`HA_TOKEN` exported. Until 2026-09-28 the restart went that way
+too, and without the token the copy succeeded but no restart happened. The
+giveaway is `ha core logs` starting before your push, and entities from the new
+package reading "Entity not found".
+
 `HA_SSH_HOST` must be the LAN hostname or IP. The Cloudflare tunnel carries
 HTTPS only, and putting SSH through it would be a much larger exposure than the
 WebSocket token. For the same reason this is deliberately **not** part of the

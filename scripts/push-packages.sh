@@ -66,8 +66,12 @@ COPYFILE_DISABLE=1 tar czf - --exclude='._*' --exclude='.DS_Store' -C "$REPO_ROO
       "mkdir -p '$REMOTE_DIR' && tar xzf - -C '$REMOTE_DIR' && ls -1 '$REMOTE_DIR'"
 
 if [ "$RESTART" -eq 1 ]; then
-  echo "==> restarting Home Assistant"
-  python3 "$REPO_ROOT/scripts/ha.py" reload --restart
+  # Over the same SSH session rather than `ha.py reload --restart`: that goes
+  # through the WebSocket API and so needs HA_URL/HA_TOKEN, and without them
+  # the files landed but the restart silently never happened. `ha core check`
+  # first, because a config HA can't load is worse than one it hasn't reloaded.
+  echo "==> checking config, then restarting Home Assistant"
+  ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "ha core check && ha core restart"
 else
   echo "==> reloading YAML"
   python3 "$REPO_ROOT/scripts/ha.py" reload
