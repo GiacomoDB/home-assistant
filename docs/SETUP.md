@@ -186,6 +186,18 @@ gh secret set CF_ACCESS_CLIENT_ID     --body "....access"
 gh secret set CF_ACCESS_CLIENT_SECRET --body "..."
 ```
 
+If you already exported them for §3, `gh secret set HA_TOKEN --body "$HA_TOKEN"`
+copies the value across without pasting the token anywhere. Plain
+`gh secret set HA_TOKEN` prompts for it instead. Either way, confirm with
+`gh secret list`: GitHub never shows a secret's value, but an unset one is
+missing from that list.
+
+**A missing secret does not fail loudly.** It reaches the workflow as an empty
+string, so Validate passes and only the Deploy step fails, with
+`error: HA_URL and HA_TOKEN must both be set`. That is how every push up to
+2026-09-28 failed. The secrets had never been added, so nothing reached HA
+through CI before that date.
+
 Then trigger a no-op run to confirm the wiring:
 Actions → **Deploy dashboards** → Run workflow → tick **dry_run**.
 
@@ -210,6 +222,10 @@ export HA_URL=https://ha.example.com
 export HA_TOKEN=eyJhbGciOi...
 ```
 
+Nothing stores these. They exist only in the shell you exported them in and
+in programs started from it afterwards, so a terminal, editor or agent that was
+already running when you exported them does not see them.
+
 Only if a Cloudflare Access policy fronts the tunnel, also:
 
 ```sh
@@ -231,7 +247,15 @@ Then:
 
 `deploy` warns about entity IDs that don't exist in your instance. Pass
 `--strict` to turn those warnings into a non-zero exit — useful if you'd rather
-CI block a typo'd sensor than ship a broken card.
+CI block a typo'd sensor than ship a broken card. A sensor created by a
+package, such as `sensor.litter_box_visits_today`, shows up in that warning
+until the package is installed. That is expected.
+
+**A local `deploy` sends the working tree, uncommitted edits included.** CI
+deploys only what is committed. If `dashboards/home.yaml` holds work you are
+not ready to publish, commit the part that is ready, push, and let the Action
+deploy it (`gh run rerun <id>` retries a failed run). Don't deploy from the
+laptop in that case, or the unfinished work goes live with it.
 
 Never commit `HA_TOKEN`. It is a full-access credential; if one leaks, revoke it
 from the same Security tab that created it.
@@ -298,6 +322,24 @@ scripts/push-packages.sh --restart         # copy + full restart
 It validates first and refuses to copy anything that fails — a broken package
 takes the whole config down at restart, which is far worse than not deploying.
 It never deletes on the remote side, so files you added there by hand survive.
+
+**Finding the host.** HA OS advertises `homeassistant.local` over mDNS, and
+on this network it resolves, with the Terminal & SSH add-on listening on the
+default port 22. If it doesn't resolve for you, look up the IP under
+Settings → System → Network in HA, or run
+`dscacheutil -q host -a name homeassistant.local` on macOS. The tunnel
+hostname in `HA_URL` will not work here.
+
+**Before the first push**, check what is already there:
+
+```sh
+ssh root@homeassistant.local 'grep -n packages /config/configuration.yaml; ls /config/packages'
+```
+
+No `packages:` line means the one-time setup above hasn't been done, and HA
+will ignore the folder. The script copies **every** package in `packages/`, not
+just the one you changed, so any listed here but missing on the HA side start
+running with that push. Most of them are alerts that send notifications to your phone.
 
 Use `--restart` the first time, and any time a package **adds** a `sensor:`
 block: `reload_all` picks up changed automations and templates, but not a newly

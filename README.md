@@ -125,7 +125,9 @@ else in your instance is left alone. See
 
 In CI the same `deploy` step runs with `HA_URL` and `HA_TOKEN` repository
 secrets. Deploys overwrite the live dashboard, so edit the YAML here rather than
-in the HA UI.
+in the HA UI. A local `deploy` sends the working tree, uncommitted edits
+included; CI sends only what is committed — see
+[docs/SETUP.md §3](docs/SETUP.md#3-working-locally).
 
 ## Automations
 
