@@ -139,7 +139,7 @@ single file so neither can be installed without the other.
 |---|---|
 | `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average, notifying on a 35%+ deviation in either direction. A sustained change in a cat's water intake is worth catching early, and it is not something you notice by glancing at a chart. |
 | `bath_humidity.yaml` | Notifies when the bathroom stays above 70% humidity for two hours *and* sits 10+ points above the hall — sustained damp rather than the harmless spike after a shower. |
-| `litter_box.yaml` | No automation — just a `history_stats` sensor counting today's litter box visits, because the occupancy sensor alone has no statistics to chart. |
+| `litter_box.yaml` | No automation. A template sensor that gives the litter box occupancy sensor a 5-minute cooldown, so a cat holding still mid-visit doesn't count twice, and a `history_stats` sensor counting today's visits from it, because the occupancy sensor alone has no statistics to chart. |
 | `water_leak.yaml` | High-priority repeating alarm while any `device_class: moisture` sensor is wet, with an all-clear when it dries. The only alert here where minutes matter, so it is deliberately louder than the rest. |
 
 The three alerts push to `notify.mobile_app_pixel_8_pro` and also raise a persistent

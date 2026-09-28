@@ -42,7 +42,7 @@ logic in `petlibro-fountain-card.yaml` — keep the two in sync if you change on
 
 | Entity ID | Meaning |
 |---|---|
-| `binary_sensor.myggspray_wrlss_mtn_sensor_occupancy` | Occupancy sensor by the litter box — device `3ea027dfc4ee13282471c8dabfbaead2`. `on` = cat in the box. Also the trigger of the UI automation `automations/_pulled/gatto_cacca.yaml`. |
+| `binary_sensor.myggspray_wrlss_mtn_sensor_occupancy` | Occupancy sensor by the litter box — device `3ea027dfc4ee13282471c8dabfbaead2`. `on` = motion in the box. Clears mid-visit when the cat holds still, so nothing on the dashboard reads it directly — see `binary_sensor.cat_in_litter_box` below. Also the trigger of the UI automation `automations/_pulled/gatto_cacca.yaml`. |
 
 ---
 
@@ -116,7 +116,8 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | Entity ID | Created by | Meaning |
 |---|---|---|
 | `sensor.cat_water_7_day_average` | `packages/cat_water_anomaly.yaml` | Trailing 7-day mean of daily fountain intake, from a `statistics` sensor over `yesterday_s_water_consumption` |
-| `sensor.litter_box_visits_today` | `packages/litter_box.yaml` | Occupied transitions of the litter box sensor since midnight, from `history_stats` |
+| `binary_sensor.cat_in_litter_box` | `packages/litter_box.yaml` | The Myggspray occupancy sensor with a 5-minute cooldown: stays `on` until the raw sensor has been clear for 5 minutes, so one visit is one `on` |
+| `sensor.litter_box_visits_today` | `packages/litter_box.yaml` | Visits since midnight — `on` transitions of `binary_sensor.cat_in_litter_box`, from `history_stats` |
 
 It reads empty for roughly the first week, and the automation stays deliberately
 silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an

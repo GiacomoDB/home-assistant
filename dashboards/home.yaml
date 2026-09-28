@@ -282,10 +282,10 @@ views:
                   name: Drinking sessions
 
             # ─────────────────────────── LITTER BOX ───────────────────────
-            # An occupancy sensor by the box; every `on` is a visit. The
-            # count comes from packages/litter_box.yaml -- a binary_sensor has
-            # no statistics of its own, so without that package the two
-            # count cards stay empty while the timeline still works.
+            # Everything here reads binary_sensor.cat_in_litter_box, not the
+            # raw Myggspray: packages/litter_box.yaml holds it on until the raw
+            # sensor has been clear for 5 minutes, so one visit is one block
+            # and one count. Without that package the whole section is empty.
             - type: heading
               heading: Litter Box
               heading_style: subtitle
@@ -299,9 +299,10 @@ views:
                   name: Visits today
                   icon: mdi:circle
                 # last_changed rather than the state: "Clear" says nothing,
-                # when the box was last used does.
+                # when the box was last used does. After a visit this runs
+                # from the end of the 5-minute cooldown, not the exit itself.
                 - type: tile
-                  entity: binary_sensor.myggspray_wrlss_mtn_sensor_occupancy
+                  entity: binary_sensor.cat_in_litter_box
                   name: Last visit
                   icon: mdi:circle
                   state_content: last_changed
@@ -311,7 +312,7 @@ views:
               title: Last 24 hours
               hours_to_show: 24
               entities:
-                - entity: binary_sensor.myggspray_wrlss_mtn_sensor_occupancy
+                - entity: binary_sensor.cat_in_litter_box
                   name: Litter box
             # Same shape as the fountain charts above: a since-midnight total,
             # so max/change -- whichever the state_class resolves to.
