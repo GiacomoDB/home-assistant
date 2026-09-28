@@ -188,6 +188,45 @@ There is also `switch.hildebrand_glow_dcc_pre_release` and
 
 ---
 
+## AdGuard Home
+
+Created by the `adguard` integration, which HA discovered from the
+`a0d7b954_adguard` add-on. Used by `dashboards/home.yaml` and
+`adguard-card.yaml`.
+
+| Entity ID | Unit | Meaning |
+|---|---|---|
+| `sensor.adguard_home_dns_queries` | queries | Queries seen in the statistics window |
+| `sensor.adguard_home_dns_queries_blocked` | queries | Of those, how many were blocked |
+| `sensor.adguard_home_dns_queries_blocked_ratio` | % | Blocked as a share of total |
+| `sensor.adguard_home_average_processing_speed` | ms | Mean time to answer a query |
+| `sensor.adguard_home_safe_browsing_blocked` | queries | Blocked by the malware/phishing list |
+| `sensor.adguard_home_safe_searches_enforced` | queries | Rewritten to a safe-search result |
+| `sensor.adguard_home_parental_control_blocked` | queries | Blocked by parental control |
+| `switch.adguard_home_protection` | | Master switch — off forwards everything unfiltered |
+| `switch.adguard_home_filtering` | | Blocklists on/off |
+| `switch.adguard_home_query_log` | | Whether AdGuard records individual queries |
+| `switch.adguard_home_safe_browsing` | | Malware/phishing blocking |
+| `switch.adguard_home_safe_search` | | Forces safe search on Google/Bing/YouTube |
+| `switch.adguard_home_parental_control` | | Adult-content blocking |
+
+Two things to know about this data:
+
+- **The counters are a rolling window, not a day.** They cover AdGuard's
+  statistics retention (24 h by default, set in its own UI), ageing queries out
+  continuously instead of resetting at midnight. A flat line on the trend graph
+  is a steady query rate; a cliff is AdGuard restarting.
+- **None of the sensors carry a `state_class`,** so HA records no long-term
+  statistics for them and `statistics-graph` plots nothing. The AdGuard view
+  uses `history-graph` and `sensor` cards for that reason, which reach back only
+  as far as recorder's `purge_keep_days`.
+
+The add-on itself is **not** managed by this repo — it is installed through the
+Supervisor and holds its own config (filter lists, per-client rules) in its data
+directory. Only the dashboard reading it lives here.
+
+---
+
 ## Lights and switches — Buttons view
 
 | Entity ID | Notes |

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Home Dashboard — phone-first. Three views: Home, Fountain, Buttons.
+# Home Dashboard — phone-first. Four views: Home, Fountain, AdGuard, Buttons.
 #
 # Merged from the dashboards that used to be separate:
 #   dashboard-general  → the Air Quality and Cat Fountain cards
@@ -325,6 +325,150 @@ views:
               entities:
                 - entity: sensor.litter_box_visits_today
                   name: Litter box visits
+
+  # ══════════════════════════════ ADGUARD ═════════════════════════════
+  # AdGuard Home runs as the `a0d7b954_adguard` app on this instance and is
+  # the DNS server for the LAN, so anything it blocks is blocked for every
+  # device — this tab is where you check that it is actually doing that.
+  #
+  # None of these sensors carry a `state_class`, so there are no long-term
+  # statistics to plot and `statistics-graph` would render empty here. The
+  # trends below use `history-graph` and `sensor` cards, which read recorder
+  # history instead and therefore only reach back as far as recorder keeps it
+  # (`purge_keep_days`, 10 by default).
+  - title: AdGuard
+    path: adguard
+    icon: mdi:circle
+    type: panel
+    badges:
+      - type: entity
+        entity: sensor.adguard_home_dns_queries_blocked_ratio
+        name: Blocked
+        icon: mdi:circle
+        color: green
+      - type: entity
+        entity: switch.adguard_home_protection
+        name: Protection
+        icon: mdi:circle
+        color: red
+    cards:
+      # mod-card wraps the stack in an ha-card we can pad, which insets every
+      # card inside it. Needed because panel views render edge-to-edge, and
+      # card-mod has no handling of its own for stacks or views.
+      - type: custom:mod-card
+        card_mod:
+          style: |
+            ha-card {
+              background: none;
+              border: none;
+              box-shadow: none;
+              padding: 0 12px;
+            }
+        card:
+          type: vertical-stack
+          cards:
+            # ──────────────────────── QUERIES & BLOCKS ────────────────────
+            # Counts over AdGuard's own rolling statistics window, not since
+            # midnight — see the header of adguard-card.yaml.
+            - type: heading
+              heading: AdGuard
+              heading_style: title
+              icon: mdi:circle
+            - !include ../adguard-card.yaml
+
+            # ─────────────────────────── TRENDS ───────────────────────────
+            # Both series share the unit "queries", so they belong on one
+            # chart: blocked is a subset of total, and the gap between the two
+            # lines is the thing worth looking at. Anything measured in a
+            # different unit gets its own card below rather than a second axis
+            # here — history-graph draws every entity against a single scale.
+            #
+            # These plot the ROLLING 24-hour counters, so a flat line means a
+            # steady query rate, not an idle network. A cliff means AdGuard
+            # restarted and its statistics started over.
+            - type: heading
+              heading: Last 24 Hours
+              heading_style: subtitle
+              icon: mdi:circle
+            - type: history-graph
+              hours_to_show: 24
+              entities:
+                - entity: sensor.adguard_home_dns_queries
+                  name: Queries
+                - entity: sensor.adguard_home_dns_queries_blocked
+                  name: Blocked
+
+            # Percentage and milliseconds, one card each: the `sensor` card
+            # pairs the current reading with its own mini graph, the same
+            # treatment the Air Quality section on the Home view gets.
+            - type: sensor
+              entity: sensor.adguard_home_dns_queries_blocked_ratio
+              graph: line
+              detail: 1
+              name: Blocked ratio
+            - type: sensor
+              entity: sensor.adguard_home_average_processing_speed
+              graph: line
+              detail: 1
+              name: Average response
+
+            # ────────────────────────── CONTROLS ──────────────────────────
+            # Every switch the AdGuard integration exposes. Tapping a tile's
+            # icon toggles it; tapping the body opens the more-info dialog.
+            #
+            # Protection is the master switch — off means AdGuard forwards
+            # everything unfiltered, and the two counters above freeze. The
+            # rest are AdGuard's individual protections and are safe to leave
+            # as they are.
+            #
+            # Safe search and safe browsing are the two that surprise people:
+            # safe search rewrites Google/Bing/YouTube results network-wide,
+            # and safe browsing checks domains against AdGuard's malware list.
+            - type: heading
+              heading: Controls
+              heading_style: title
+              icon: mdi:circle
+            - type: grid
+              columns: 2
+              square: false
+              cards:
+                - type: tile
+                  entity: switch.adguard_home_protection
+                  name: Protection
+                  icon: mdi:circle
+                - type: tile
+                  entity: switch.adguard_home_filtering
+                  name: Filtering
+                  icon: mdi:circle
+                - type: tile
+                  entity: switch.adguard_home_safe_browsing
+                  name: Safe browsing
+                  icon: mdi:circle
+                - type: tile
+                  entity: switch.adguard_home_safe_search
+                  name: Safe search
+                  icon: mdi:circle
+                - type: tile
+                  entity: switch.adguard_home_parental_control
+                  name: Parental control
+                  icon: mdi:circle
+                - type: tile
+                  entity: switch.adguard_home_query_log
+                  name: Query log
+                  icon: mdi:circle
+
+            # Everything AdGuard can do that HA has no entity for — filter
+            # lists, per-client rules, the query log itself — lives in its own
+            # UI, served through the app's ingress route. Admin users only:
+            # HA hides ingress panels from non-admins, so this button lands on
+            # an error page for them rather than a login prompt.
+            - type: button
+              name: Open AdGuard Home
+              icon: mdi:circle
+              show_state: false
+              tap_action:
+                action: navigate
+                navigation_path: /hassio/ingress/a0d7b954_adguard
 
   # ═════════════════════════════ BUTTONS ══════════════════════════════
   # Copied from dashboard-giacomo. The two placeholder "New section"

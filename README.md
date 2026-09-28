@@ -23,7 +23,7 @@ docs/ENTITIES.md     every entity ID this repo depends on
 
 ### Home
 
-`dashboards/home.yaml` — phone-first, three views, deployed over the dashboard
+`dashboards/home.yaml` — phone-first, four views, deployed over the dashboard
 at `dashboard-general`.
 
 **Home** — the at-a-glance view:
@@ -46,6 +46,11 @@ drinking sessions. Below that, **Litter Box**: today's visit count, when the box
 was last used, a 24-hour timeline from the occupancy sensor by the box, and 30
 days of daily visits. The counts need `packages/litter_box.yaml` installed.
 
+**AdGuard** — the DNS side of the house: query and block counts from
+`adguard-card.yaml`, 24-hour trends, and a tile for every switch the AdGuard
+integration exposes. AdGuard Home runs as the `a0d7b954_adguard` add-on and is
+the LAN's DNS server, so what it blocks is blocked for every device.
+
 **Buttons** — the light and switch buttons.
 
 Side margins come from [`card-mod`](https://github.com/thomasloven/lovelace-card-mod):
@@ -55,7 +60,7 @@ outside a sections view, so this is the available lever. It has to be the
 wrapper rather than `card_mod` on the stack itself — card-mod has no handling
 for stack or view elements, so styling them directly does nothing.
 
-The four custom cards are pulled in with `!include` from the maintained copies
+The five custom cards are pulled in with `!include` from the maintained copies
 at the repo root, so the standalone versions and the dashboard can't drift
 apart. That means this dashboard needs `html-template-card` and
 `apexcharts-card` from HACS.
@@ -277,6 +282,33 @@ The standing charge is a footnote rather than a fourth cell: it is fixed and you
 cannot influence it, but without it the daily cost looks wrong on a low-use day.
 
 **Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#energy--hildebrand-glow-dcc).
+
+### AdGuard Card
+
+`adguard-card.yaml` — DNS queries, how many were blocked and the block rate, in
+the same 3-across grid as the climate and energy cards.
+
+**Requires:** the `html-template-card` custom card (installable via HACS).
+
+Every figure covers AdGuard's own **rolling** statistics window — 24 hours out
+of the box — not "today" and not HA's recorder. The count at 18:00 covers 18:00
+yesterday to now and ages queries out continuously rather than resetting at
+midnight. Change the retention in the AdGuard UI and the "Queries 24h" label
+here is the thing to edit.
+
+Blocked is rendered green: a high number is the system working. The footer
+carries the average response time, and flips to a red warning when protection
+or filtering is switched off — the one state where the counts above are
+misleading, since they keep showing yesterday's blocks while nothing is being
+filtered now.
+
+None of the AdGuard sensors carry a `state_class`, so they record no long-term
+statistics and `statistics-graph` renders empty against them. The trend cards on
+that view use `history-graph` and `sensor` instead, which read recorder history
+and so reach back only as far as `purge_keep_days`. `python3 scripts/ha.py
+stats` reports these entities as NO STATS, which is expected.
+
+**Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#adguard-home).
 
 ### Petlibro Fountain Card
 

@@ -1,0 +1,168 @@
+# AdGuard Home at a glance: how many DNS queries went through it, how many it
+# blocked, and how fast it answered — in the same 3-across grid as the climate
+# and energy cards so the three read as one design.
+#
+# WHAT THE NUMBERS COVER. Every figure here comes from AdGuard's own statistics
+# window, not from "today" and not from HA's recorder. That window is 24 hours
+# out of the box and is a ROLLING one — the count at 18:00 covers 18:00
+# yesterday to now, and drops queries as they age out rather than resetting at
+# midnight. Change it in the AdGuard UI (Settings → General → Statistics
+# retention) and these three cells silently start meaning something else, so
+# the "24 h" label below is the thing to edit if you ever do.
+#
+# The AdGuard integration puts NO `state_class` on any of these sensors, so
+# none of them record long-term statistics. That rules out `statistics-graph`
+# for the trend charts on this view — they use `history-graph` and `sensor`
+# cards, which read recorder history instead. `python3 scripts/ha.py stats`
+# reports them as NO STATS, which is expected and not a fault to chase.
+#
+# Blocked is rendered green: on this card a high number is the system working,
+# not a problem. The footer flips to red only when protection or filtering is
+# switched off, which is the one state where the counts above are misleading —
+# they keep showing yesterday's blocks while nothing is being filtered now.
+#
+# Requires html-template-card (HACS).
+
+type: custom:html-template-card
+title: ""
+ignore_line_breaks: true
+content: >
+  {% set queries = 'sensor.adguard_home_dns_queries' %}
+  {% set blocked = 'sensor.adguard_home_dns_queries_blocked' %}
+  {% set ratio = 'sensor.adguard_home_dns_queries_blocked_ratio' %}
+  {% set speed = 'sensor.adguard_home_average_processing_speed' %}
+  {% set protection = 'switch.adguard_home_protection' %}
+  {% set filtering = 'switch.adguard_home_filtering' %}
+
+  {#- Query counts reach five figures within a day on a normal household
+      network, and "24310" is meaningfully harder to read at a glance than
+      "24,310". Grouped with format() rather than a hand-rolled slice so it
+      stays correct at any magnitude. -#}
+  {% macro grouped(entity) %}
+    {%- if states(entity) | is_number -%}
+      {{- "{:,}".format(states(entity) | float | round(0) | int) -}}
+    {%- else -%}
+      <span class="ag-na">—</span>
+    {%- endif -%}
+  {% endmacro %}
+
+  <style>
+    ha-card:has(.ag-card) { background: none !important; box-shadow: none !important; border: none !important; }
+
+    .ag-card {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--ha-card-background, var(--card-background-color, #fff));
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .ag-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .ag-cell {
+      padding: 9px 3px 10px;
+      text-align: center;
+      min-width: 0;
+      border-right: 1px solid var(--divider-color, #e0e0e0);
+    }
+
+    .ag-cell:nth-child(3n) { border-right: none; }
+
+    .ag-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      line-height: 1.3;
+      color: var(--secondary-text-color, #727272);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* tabular-nums stops the figures jittering sideways as they tick up */
+    .ag-value {
+      font-size: 21px;
+      font-weight: 700;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      color: var(--primary-text-color, #212121);
+      margin-top: 3px;
+    }
+
+    .ag-value.blocked { color: #2fa36b; }
+
+    .ag-value i {
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 500;
+      opacity: 0.6;
+      margin-left: 1px;
+    }
+
+    .ag-foot {
+      padding: 6px 11px 7px;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--secondary-text-color, #727272);
+      text-align: center;
+    }
+
+    .ag-foot.warn {
+      color: #d33c3c;
+      font-weight: 600;
+    }
+
+    .ag-na { color: var(--secondary-text-color, #9e9e9e); font-weight: 400; }
+  </style>
+
+
+  <div class="ag-card">
+    <div class="ag-grid">
+      <div class="ag-cell">
+        <div class="ag-label">Queries 24h</div>
+        <div class="ag-value">{{ grouped(queries) }}</div>
+      </div>
+      <div class="ag-cell">
+        <div class="ag-label">Blocked</div>
+        <div class="ag-value blocked">{{ grouped(blocked) }}</div>
+      </div>
+      <div class="ag-cell">
+        <div class="ag-label">Blocked %</div>
+        <div class="ag-value">
+          {%- if states(ratio) | is_number -%}
+            {{ states(ratio) | float | round(1) }}<i>%</i>
+          {%- else -%}
+            <span class="ag-na">—</span>
+          {%- endif -%}
+        </div>
+      </div>
+    </div>
+
+    {#- Response time is a footnote rather than a fourth cell: it only matters
+        when it is bad, and a DNS server answering in single-digit milliseconds
+        does not need a quarter of the card to say so. -#}
+    {% if states(speed) | is_number %}
+      <div class="ag-foot">
+        Answers in {{ states(speed) | float | round(1) }} ms on average
+      </div>
+    {% endif %}
+
+    {#- One warning at a time, most severe first. Protection off stops AdGuard
+        filtering anything at all; filtering off keeps the safe-browsing and
+        parental checks but drops the blocklists. Either way the counts above
+        are history, not what is happening now. -#}
+    {% if is_state(protection, 'off') %}
+      <div class="ag-foot warn">
+        Protection is off — every query is being passed straight through
+      </div>
+    {% elif is_state(filtering, 'off') %}
+      <div class="ag-foot warn">
+        Filtering is off — blocklists are not being applied
+      </div>
+    {% endif %}
+  </div>
