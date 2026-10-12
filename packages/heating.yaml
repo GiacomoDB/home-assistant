@@ -1,0 +1,430 @@
+# Heating: HA owns the schedule, tado only executes it, locally.
+#
+# WHY NOT THE TADO CLOUD
+# Since 2026-01-01 tado caps its API at 100 calls a day without Auto-Assist.
+# One poll of the cloud integration costs several calls, so the 5-minute default
+# alone is far over budget, and when the quota runs out the integration cannot
+# even log in until 12:00 CET. Everything here goes through HomeKit Controller
+# instead: the V3+ Internet Bridge speaks HomeKit on the LAN, with no cloud and
+# no quota. Nothing in this file calls a `tado.*` action.
+#
+# PREREQUISITE -- the one entity this file depends on
+# Pair the bridge with HomeKit Controller (Settings > Devices > HomeKit Device;
+# the code is on the bridge label, and it must not also be in Apple Home), then
+# rename the Smart Thermostat's climate entity to `climate.heating`. Renaming
+# beats editing this file: the ID appears in every template below.
+# The thermostat is in the bedroom, so tado's own reading is the bedroom's. The
+# Wireless Temperature Sensor in the living room appears as a second, independent
+# zone. It's left off: there are no radiator valves, so the boiler heats every
+# room anyway, and one zone is all there is to drive.
+# In the tado app, set the room's manual control to "until you cancel". A
+# HomeKit setpoint is a manual overlay to tado, and with "until next time block"
+# tado would silently undo it at its own schedule boundaries.
+#
+# HOW IT DECIDES
+# The schedule says what temperature a ROOM should be, and which room's sensor
+# counts at that time of day: the kitchen at breakfast, the living room in the
+# evening, the babyroom overnight. tado can only measure where its own sensor
+# is, so the controller aims tado at a shifted number:
+#
+#     setpoint = desired + (tado reading - room reading)
+#
+# The bias is clamped to +/-3 degrees and the setpoint rounded to 0.5, so a
+# misbehaving sensor cannot drive the boiler to its limits. tado keeps its own
+# control loop; it is just pointed at the right number. tado's own offset
+# setting would be the tidier lever, but it is cloud-only.
+#
+# If the room sensor is unavailable or has not reported for 2 hours (the IKEA
+# Thread sensors do drop), the bias becomes 0 and tado's own reading is used.
+# Outside every schedule block the setback applies, also against tado's reading.
+#
+# FEW WRITES ON PURPOSE
+# Every write wakes the battery-powered thermostat over radio. The controller
+# writes on schedule boundaries, boosts and HA starts, and otherwise only when
+# its 10-minute check finds the setpoint 1 degree off, or 0.5 off and at least
+# 30 minutes since the last write. Expect tens of writes a day, not hundreds.
+#
+# MANUAL CHANGES WIN UNTIL THE NEXT BLOCK
+# A setpoint the controller did not write (dial, tado app, HA UI, the scroll
+# wheel), or the mode leaving `heat`, pauses the controller until the next
+# schedule boundary. It recognises its own writes by recording each value in
+# `input_number.heating_last_written` BEFORE sending it, so the echo from the
+# bridge matches and does not count as a manual change. `script.heating_resume`
+# ends a pause early.
+#
+# SHADOW MODE
+# `input_boolean.heating_controller_enabled` is off until you turn it on. While
+# off, the sensors show what the controller would do and the logbook records
+# each write it would have made, but nothing is sent to tado. The tado schedule
+# keeps running meanwhile. Leave it a day or two, then turn it on.
+#
+# SAFETY NET
+# Keep a plain schedule in the tado app (e.g. 18 day / 16 night). With manual
+# control "until you cancel" it never fights HA, and if HA is gone for good,
+# "resume schedule" in the app hands the house back to tado.
+#
+# TUNING
+#   schedule.heating           blocks below: target, room label, room sensor
+#   input_number.heating_setback   outside the blocks (dashboard-editable)
+#   2 h staleness, +/-3 bias clamp, 25 boost -- in the template sensors
+#   1.0 / 0.5 + 30 min hysteresis -- in heating_controller's `due`
+#   alert: 2 degrees short for 2 hours -- in heating_alert
+
+schedule:
+  heating:
+    name: Heating
+    # The sensor IDs are anchored on first use so each is written once.
+    # Blocks may touch (to == next from) but not overlap; "24:00:00" ends a day.
+    monday: &weekday
+      - from: "00:00:00"
+        to: "06:30:00"
+        data: {target: 18, room: Babyroom, sensor: &babyroom sensor.babyroom_babyroom_temperature}
+      - from: "06:30:00"
+        to: "08:30:00"
+        data: {target: 20, room: Kitchen, sensor: &kitchen sensor.timmerflotte_temp_hmd_sensor_temperature}
+      - from: "17:00:00"
+        to: "22:00:00"
+        data: {target: 20.5, room: Living Room, sensor: &living sensor.timmerflotte_temp_hmd_sensor_temperature_4}
+      - from: "22:00:00"
+        to: "24:00:00"
+        data: {target: 18, room: Babyroom, sensor: *babyroom}
+    tuesday: *weekday
+    wednesday: *weekday
+    thursday: *weekday
+    friday: *weekday
+    saturday: &weekend
+      - from: "00:00:00"
+        to: "08:00:00"
+        data: {target: 18, room: Babyroom, sensor: *babyroom}
+      - from: "08:00:00"
+        to: "22:00:00"
+        data: {target: 20, room: Living Room, sensor: *living}
+      - from: "22:00:00"
+        to: "24:00:00"
+        data: {target: 18, room: Babyroom, sensor: *babyroom}
+    sunday: *weekend
+
+input_boolean:
+  heating_controller_enabled:
+    name: Heating controller live
+    icon: mdi:circle
+
+input_number:
+  heating_setback:
+    name: Heating setback
+    min: 12
+    max: 20
+    step: 0.5
+    # Reapplied on every restart, on purpose: this file is the source of truth
+    # and the dashboard control is for a temporary tweak.
+    initial: 16
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:circle
+  # Bookkeeping, not a control: the last setpoint the controller sent. See
+  # MANUAL CHANGES above.
+  heating_last_written:
+    name: Heating last written setpoint
+    min: 5
+    max: 25
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:circle
+
+input_datetime:
+  heating_override_until:
+    name: Heating manual override until
+    has_date: true
+    has_time: true
+    icon: mdi:circle
+
+timer:
+  heating_boost:
+    name: Heating boost
+    duration: "00:15:00"
+    icon: mdi:circle
+
+script:
+  heating_resume:
+    alias: "Heating: resume schedule"
+    icon: mdi:circle
+    sequence:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.heating_override_until
+        data:
+          timestamp: 0
+
+template:
+  - sensor:
+      - name: Heating desired target
+        unique_id: heating_desired_target
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: >-
+          {% set setback = states('input_number.heating_setback') | float(16) %}
+          {% if is_state('schedule.heating', 'on') %}
+            {{ state_attr('schedule.heating', 'target') | float(setback) }}
+          {% else %}
+            {{ setback }}
+          {% endif %}
+        attributes:
+          room: "{{ state_attr('schedule.heating', 'room') if is_state('schedule.heating', 'on') else 'none (setback)' }}"
+
+      # The current block's room sensor. Unavailable when there is no block, or
+      # the sensor is down or silent for 2 hours; the bias then falls back to 0.
+      # `last_reported` moves on every report, even an unchanged value, so a
+      # steady temperature does not look stale.
+      - name: Heating reference temperature
+        unique_id: heating_reference_temperature
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states(state_attr('schedule.heating', 'sensor')) }}"
+        availability: >-
+          {% set e = state_attr('schedule.heating', 'sensor') %}
+          {% set s = expand(e) if is_state('schedule.heating', 'on') and e is string else [] %}
+          {{ s | count == 1 and s[0].state | is_number
+             and (now() - s[0].last_reported).total_seconds() < 7200 }}
+        attributes:
+          room: "{{ state_attr('schedule.heating', 'room') }}"
+          sensor: "{{ state_attr('schedule.heating', 'sensor') }}"
+
+      # How much warmer tado thinks it is than the room that matters.
+      - name: Heating bias
+        unique_id: heating_bias
+        unit_of_measurement: "°C"
+        state_class: measurement
+        state: >-
+          {% set tado = state_attr('climate.heating', 'current_temperature') %}
+          {% set room = states('sensor.heating_reference_temperature') %}
+          {% if tado is number and room | is_number %}
+            {{ ([[tado - room | float, 3] | min, -3] | max) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+        attributes:
+          source: "{{ 'room sensor' if states('sensor.heating_reference_temperature') | is_number else 'tado' }}"
+
+      # What the controller sends (or, in shadow mode, would send).
+      - name: Heating computed setpoint
+        unique_id: heating_computed_setpoint
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: >-
+          {% if is_state('timer.heating_boost', 'active') %}
+            25
+          {% else %}
+            {% set sp = ((states('sensor.heating_desired_target') | float
+                          + states('sensor.heating_bias') | float(0)) * 2) | round(0) / 2 %}
+            {{ [[sp, 25] | min, 5] | max }}
+          {% endif %}
+        availability: "{{ states('sensor.heating_desired_target') | is_number }}"
+        attributes:
+          reason: >-
+            {%- if is_state('timer.heating_boost', 'active') -%} boost
+            {%- elif state_attr('input_datetime.heating_override_until', 'timestamp') | float(0) > as_timestamp(now()) -%} manual override
+            {%- elif is_state('input_boolean.heating_controller_enabled', 'off') -%} shadow mode
+            {%- elif is_state('schedule.heating', 'on') -%} schedule
+            {%- else -%} setback
+            {%- endif -%}
+
+automation:
+  - id: heating_controller
+    alias: "Heating: apply setpoint"
+    description: >-
+      Sends the computed setpoint to tado over HomeKit on schedule boundaries,
+      boosts and HA starts, and on a 10-minute check when it has drifted. In
+      shadow mode it only logs what it would have sent.
+    # Runs are a few service calls long; queue rather than drop, so a boundary
+    # landing mid-run is not lost until the next 10-minute check.
+    mode: queued
+    max: 3
+    triggers:
+      # No `to:`, so attribute changes count too: two touching blocks keep the
+      # state `on` and change only the target and room.
+      - trigger: state
+        entity_id: schedule.heating
+        id: boundary
+      - trigger: state
+        entity_id: timer.heating_boost
+        id: boundary
+      - trigger: state
+        entity_id:
+          - input_boolean.heating_controller_enabled
+          - input_datetime.heating_override_until
+          - input_number.heating_setback
+        id: boundary
+      - trigger: homeassistant
+        event: start
+        id: boundary
+      - trigger: time_pattern
+        minutes: "/10"
+        id: tick
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ states('climate.heating') not in ['unavailable', 'unknown']
+             and states('sensor.heating_computed_setpoint') | is_number }}
+      # A boost overrides a manual pause; nothing else does.
+      - condition: template
+        value_template: >-
+          {{ is_state('timer.heating_boost', 'active')
+             or state_attr('input_datetime.heating_override_until', 'timestamp') | float(0)
+                <= as_timestamp(now()) }}
+    actions:
+      - variables:
+          setpoint: "{{ states('sensor.heating_computed_setpoint') | float }}"
+          current: "{{ state_attr('climate.heating', 'temperature') | float(0) }}"
+          heating: "{{ is_state('climate.heating', 'heat') }}"
+          gap: "{{ (setpoint - current) | abs }}"
+          since_write: >-
+            {% set s = states.input_number.heating_last_written %}
+            {{ (now() - s.last_changed).total_seconds() if s else 999999 }}
+          due: >-
+            {% if not heating %}true
+            {% elif trigger.id == 'boundary' %}{{ gap > 0.05 }}
+            {% else %}{{ gap >= 1 or (gap >= 0.5 and since_write >= 1800) }}{% endif %}
+      - condition: template
+        value_template: "{{ due }}"
+      - if:
+          - condition: state
+            entity_id: input_boolean.heating_controller_enabled
+            state: "on"
+        then:
+          # Record first: the bridge echoes the new setpoint back, and
+          # heating_manual_override must recognise the echo as ours.
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.heating_last_written
+            data:
+              value: "{{ setpoint }}"
+          - if:
+              - condition: template
+                value_template: "{{ not heating }}"
+            then:
+              - action: climate.set_hvac_mode
+                target:
+                  entity_id: climate.heating
+                data:
+                  hvac_mode: heat
+          - action: climate.set_temperature
+            target:
+              entity_id: climate.heating
+            data:
+              temperature: "{{ setpoint }}"
+        # Shadow mode logs boundaries only. tado runs its own schedule
+        # meanwhile, so the 10-minute check would find a gap almost every time.
+        else:
+          - condition: template
+            value_template: "{{ trigger.id == 'boundary' }}"
+          - action: logbook.log
+            data:
+              name: Heating (shadow mode)
+              entity_id: sensor.heating_computed_setpoint
+              message: >-
+                would set {{ setpoint }} °C (tado is set to {{ current }} °C,
+                {{ states('climate.heating') }}): {{ state_attr('sensor.heating_computed_setpoint', 'reason') }}
+
+  - id: heating_manual_override
+    alias: "Heating: manual change pauses the schedule"
+    description: >-
+      A setpoint the controller did not write, or the mode leaving heat, pauses
+      the controller until the next schedule boundary.
+    # Only changes made while already in `heat` count. When the controller
+    # itself switches the mode to heat, the bridge first reports tado's old
+    # setpoint, which would otherwise read as a manual change.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: climate.heating
+        attribute: temperature
+      - trigger: state
+        entity_id: climate.heating
+        from: heat
+    conditions:
+      - condition: state
+        entity_id: input_boolean.heating_controller_enabled
+        state: "on"
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none and trigger.to_state is not none
+             and trigger.from_state.state == 'heat'
+             and trigger.to_state.state not in ['unavailable', 'unknown'] }}
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state.state != 'heat'
+             or ((trigger.to_state.attributes.temperature | float(0))
+                 - states('input_number.heating_last_written') | float(0)) | abs > 0.05 }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.heating_override_until
+        data:
+          # No next block (an empty schedule) means a 4-hour pause.
+          timestamp: >-
+            {{ as_timestamp(state_attr('schedule.heating', 'next_event'),
+                            as_timestamp(now()) + 14400) }}
+
+  - id: heating_alert
+    alias: "Heating: not keeping up"
+    description: >-
+      Notifies when the thermostat has been unreachable for 30 minutes, or the
+      reference room has stayed 2 degrees short of the schedule for 2 hours.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: climate.heating
+        to: unavailable
+        for:
+          minutes: 30
+        id: unreachable
+      - trigger: template
+        value_template: >-
+          {{ is_state('input_boolean.heating_controller_enabled', 'on')
+             and state_attr('sensor.heating_computed_setpoint', 'reason') == 'schedule'
+             and states('sensor.heating_reference_temperature') | is_number
+             and states('sensor.heating_desired_target') | float(0)
+                 - states('sensor.heating_reference_temperature') | float(0) >= 2 }}
+        for:
+          hours: 2
+        id: cold
+    conditions:
+      # At most one alert per 6 hours, as in bath_humidity.yaml.
+      - condition: template
+        value_template: >-
+          {% set last = this.attributes.get('last_triggered') %}
+          {{ last is none or (now() - last).total_seconds() > 21600 }}
+    actions:
+      - variables:
+          notify_target: notify.mobile_app_pixel_8_pro
+          title: >-
+            {{ 'Heating: thermostat unreachable' if trigger.id == 'unreachable'
+               else 'Heating: ' ~ state_attr('sensor.heating_reference_temperature', 'room') ~ ' not warming up' }}
+          summary: >-
+            {% if trigger.id == 'unreachable' %}
+            HA has not reached the tado thermostat over HomeKit for 30 minutes,
+            so the schedule is not being applied. Check the Internet Bridge.
+            {% else %}
+            {{ state_attr('sensor.heating_reference_temperature', 'room') }} is
+            {{ states('sensor.heating_reference_temperature') }} °C after two
+            hours against a target of {{ states('sensor.heating_desired_target') }} °C.
+            Check the boiler and the tado receiver.
+            {% endif %}
+      - action: "{{ notify_target }}"
+        continue_on_error: true
+        data:
+          title: "{{ title }}"
+          message: "{{ summary }}"
+          data:
+            channel: Home Alerts
+            importance: default
+            tag: heating
+      - action: persistent_notification.create
+        data:
+          title: "{{ title }}"
+          notification_id: heating_alert
+          message: "{{ summary }}"

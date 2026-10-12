@@ -91,6 +91,41 @@ views:
               icon: mdi:circle
             - !include ../climate-table-card.yaml
 
+            # ─────────────────────────── HEATING ──────────────────────────
+            # packages/heating.yaml: HA owns the schedule and drives tado over
+            # HomeKit. Desired is what the schedule asks of the reference
+            # room; the setpoint is what tado is sent, shifted by the bias
+            # between tado's own reading and that room. "Why" says what is in
+            # charge: schedule, setback, boost, manual override or shadow mode.
+            - type: entities
+              title: Heating
+              entities:
+                - entity: climate.heating
+                  name: tado
+                - entity: sensor.heating_desired_target
+                  name: Desired
+                - entity: sensor.heating_reference_temperature
+                  name: Reference room
+                - entity: sensor.heating_bias
+                  name: Bias (tado − room)
+                - entity: sensor.heating_computed_setpoint
+                  name: Setpoint sent
+                - type: attribute
+                  entity: sensor.heating_computed_setpoint
+                  attribute: reason
+                  name: Why
+                  icon: mdi:circle
+                - entity: input_datetime.heating_override_until
+                  name: Manual until
+                - entity: script.heating_resume
+                  name: Resume schedule
+                - entity: timer.heating_boost
+                  name: Boost
+                - entity: input_number.heating_setback
+                  name: Setback
+                - entity: input_boolean.heating_controller_enabled
+                  name: Live (off = shadow mode)
+
             # statistics-graph rather than history-graph. It plots long-term
             # statistics instead of raw recorder states, so `stat_types: [mean]`
             # gives one averaged point per bucket — six sensors on one chart

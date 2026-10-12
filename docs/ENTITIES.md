@@ -84,6 +84,28 @@ rather than showing a wrong or zero value.
 
 ---
 
+## Heating — tado over HomeKit
+
+tado V3+: Internet Bridge, Wireless Receiver (boiler), Smart Thermostat,
+Wireless Temperature Sensor. Driven by `packages/heating.yaml` through
+**HomeKit Controller**, which is local and has no API quota. The official
+cloud integration is limited to 100 calls a day without Auto-Assist, and
+nothing in this repo calls it.
+
+| Entity ID | Meaning |
+|---|---|
+| `climate.heating` | Device *Tado Bedroom*: the Smart Thermostat (RU3944153856), **in the bedroom**, via HomeKit Controller. **Renamed by hand** to this ID; the package depends on it. `current_temperature` is tado's own reading, so the bedroom's. |
+| `climate.tado_smart_thermostat_su0277360640` | Device *Tado Livingroom*: the Wireless Temperature Sensor, **in the living room**. tado shows it as a separate zone that's independent of the bedroom one. Kept **off**, and nothing in this repo uses it. |
+
+There are no radiator valves, so whenever the boiler runs, every radiator in the
+flat heats. One zone is all HA needs to drive. Keep the Living Room zone off in
+the tado app, so it can't ask for heat behind the schedule's back.
+
+The schedule's reference rooms are the climate sensors above (living room,
+kitchen, babyroom). Package entities are listed under *Derived entities*.
+
+---
+
 ## Air quality — Alpstuga monitor
 
 This device also provides the Bedroom temperature and humidity above.
@@ -118,6 +140,17 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | `sensor.cat_water_7_day_average` | `packages/cat_water_anomaly.yaml` | Trailing 7-day mean of daily fountain intake, from a `statistics` sensor over `yesterday_s_water_consumption` |
 | `binary_sensor.cat_in_litter_box` | `packages/litter_box.yaml` | The Myggspray occupancy sensor with a 5-minute cooldown: stays `on` until the raw sensor has been clear for 5 minutes, so one visit is one `on` |
 | `sensor.litter_box_visits_today` | `packages/litter_box.yaml` | Visits since midnight — `on` transitions of `binary_sensor.cat_in_litter_box`, from `history_stats` |
+| `schedule.heating` | `packages/heating.yaml` | Heating blocks. While a block is on, attributes `target`, `room`, `sensor` say what it wants and which room counts |
+| `sensor.heating_desired_target` | `packages/heating.yaml` | The current block's target, or the setback outside blocks |
+| `sensor.heating_reference_temperature` | `packages/heating.yaml` | The current block's room sensor. Unavailable outside blocks, or when the sensor is down or silent for 2 h |
+| `sensor.heating_bias` | `packages/heating.yaml` | tado reading − reference room, clamped ±3; 0 when there's no reference |
+| `sensor.heating_computed_setpoint` | `packages/heating.yaml` | What tado is sent: desired + bias, rounded to 0.5, or 25 during a boost. `reason` attribute: schedule / setback / boost / manual override / shadow mode |
+| `input_boolean.heating_controller_enabled` | `packages/heating.yaml` | Off = shadow mode: computes and logs, never writes |
+| `input_number.heating_setback` | `packages/heating.yaml` | Target outside blocks; reset to 16 on restart |
+| `input_number.heating_last_written` | `packages/heating.yaml` | Bookkeeping: last setpoint sent, so the bridge's echo isn't taken as a manual change |
+| `input_datetime.heating_override_until` | `packages/heating.yaml` | A manual change pauses the controller until this time (the next block) |
+| `timer.heating_boost` | `packages/heating.yaml` | Running = 25 °C boost. Started by the center-button blueprint |
+| `script.heating_resume` | `packages/heating.yaml` | Ends a manual pause now |
 
 It reads empty for roughly the first week, and the automation stays deliberately
 silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an
@@ -140,7 +173,8 @@ python scripts/ha.py entities battery
 ```
 
 Battery-powered devices in this instance: the IKEA Timmerflotte temp/humidity
-sensors, the Bilresa scroll wheels, the Tado TRVs and the Alpstuga monitor.
+sensors, the Bilresa scroll wheels, the tado Smart Thermostat and Wireless
+Temperature Sensor, and the Alpstuga monitor.
 
 A battery sensor that is `unavailable` or `unknown` is listed under **Not
 reporting** rather than skipped. It used to be filtered out by the numeric

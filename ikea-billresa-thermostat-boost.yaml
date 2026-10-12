@@ -1,6 +1,10 @@
 blueprint:
   name: "Tado Thermostat Boost"
-  description: "Boost Tado thermostats when button is pressed. Limited to once per day."
+  description: >-
+    Boost the heating when the button is pressed. Limited to once per day.
+    Starts the boost timer from packages/heating.yaml: the heating controller
+    sends 25 °C to tado over HomeKit (local, no cloud quota) while it runs, then
+    goes back to the schedule.
   domain: automation
   input:
     button:
@@ -9,17 +13,23 @@ blueprint:
         entity:
           domain: event
 
-    thermostat_1:
-      name: "Thermostat 1"
+    boost_timer:
+      name: "Boost Timer"
+      description: "timer.heating_boost, from packages/heating.yaml"
+      default: timer.heating_boost
       selector:
         entity:
-          domain: climate
+          domain: timer
 
-    thermostat_2:
-      name: "Thermostat 2"
+    boost_minutes:
+      name: "Boost Duration"
+      default: 15
       selector:
-        entity:
-          domain: climate
+        number:
+          min: 5
+          max: 120
+          step: 5
+          unit_of_measurement: min
 
     daily_limit_helper:
       name: "Daily Limit Helper"
@@ -33,6 +43,9 @@ blueprint:
         entity:
           domain: light
 
+variables:
+  boost_minutes: !input boost_minutes
+
 trigger:
   - platform: state
     entity_id: !input button
@@ -43,19 +56,12 @@ condition:
     state: "off"
 
 action:
-  - service: tado.set_climate_timer
+  - service: timer.start
     target:
-      entity_id: !input thermostat_1
+      entity_id: !input boost_timer
     data:
-      temperature: 25
-      time_period: "00:15:00"
-
-  - service: tado.set_climate_timer
-    target:
-      entity_id: !input thermostat_2
-    data:
-      temperature: 25
-      time_period: "00:15:00"
+      # Seconds; timer.start accepts a plain number.
+      duration: "{{ boost_minutes | int * 60 }}"
 
   - service: input_boolean.turn_on
     target:

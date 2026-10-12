@@ -140,9 +140,10 @@ single file so neither can be installed without the other.
 | `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average, notifying on a 35%+ deviation in either direction. A sustained change in a cat's water intake is worth catching early, and it is not something you notice by glancing at a chart. |
 | `bath_humidity.yaml` | Notifies when the bathroom stays above 70% humidity for two hours *and* sits 10+ points above the hall — sustained damp rather than the harmless spike after a shower. |
 | `litter_box.yaml` | No automation. A template sensor that gives the litter box occupancy sensor a 5-minute cooldown, so a cat holding still mid-visit doesn't count twice, and a `history_stats` sensor counting today's visits from it, because the occupancy sensor alone has no statistics to chart. |
+| `heating.yaml` | HA owns the heating schedule and drives tado **locally over HomeKit**: tado's cloud API allows 100 calls a day without Auto-Assist, too few to schedule through. Each schedule block names a target and the room whose sensor counts (kitchen at breakfast, babyroom overnight), and tado is sent `target + (tado reading − room reading)`. Manual changes pause it until the next block; it starts in shadow mode. Needs the HomeKit thermostat renamed to `climate.heating` — see the file header. Alerts if the thermostat is unreachable or a room stays 2° short. |
 | `water_leak.yaml` | High-priority repeating alarm while any `device_class: moisture` sensor is wet, with an all-clear when it dries. The only alert here where minutes matter, so it is deliberately louder than the rest. |
 
-The three alerts push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
+The four alerts push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
 notification, so an alert survives an undelivered push. `notify_target` at the
 top of each automation's variables is the single place to change that.
 
@@ -384,8 +385,11 @@ Controls Tado thermostat temperature with clockwise/counter-clockwise rotation.
 
 ### Center Button – Tado Thermostat Boost (Once Per Day)
 
-Boost Tado thermostats with multi-click on center button. 3-click and 6-click trigger different thermostats. Limited to one boost per day.
+Boosts the heating from the center button, limited to one boost per day. It
+starts `timer.heating_boost` (15 min by default) from `packages/heating.yaml`,
+and the heating controller sends 25 °C to tado over HomeKit while it runs. No
+cloud call, so no tado API quota.
 
-**Prerequisites:** Create an `input_boolean` helper to track daily usage, and a separate automation to reset it at midnight.
+**Prerequisites:** `packages/heating.yaml` installed; an `input_boolean` helper to track daily usage, and a separate automation to reset it at midnight. Automations made from the old version (two thermostat inputs) need re-saving with the new inputs.
 
 <a href="https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FGiacomoDB%2Fhome-assistant%2Fblob%2Fmain%2Fikea-billresa-thermostat-boost.yaml" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/blueprint_import.svg" alt="Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled." /></a>
