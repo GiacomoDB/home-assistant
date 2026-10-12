@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Home Dashboard — phone-first. Four views: Home, Fountain, AdGuard, Buttons.
+# Home Dashboard — phone-first. Five views: Home, Fountain, AdGuard, Heating, Buttons.
 #
 # Merged from the dashboards that used to be separate:
 #   dashboard-general  → the Air Quality and Cat Fountain cards
@@ -90,79 +90,6 @@ views:
               heading_style: title
               icon: mdi:circle
             - !include ../climate-table-card.yaml
-
-            # ─────────────────────────── HEATING ──────────────────────────
-            # packages/heating.yaml: HA owns the schedule and drives tado over
-            # HomeKit. This is the only place heating is meant to be changed:
-            # the slider holds a temperature until the next schedule block,
-            # measured in the block's room (so it is compensated like the
-            # schedule), and the buttons boost, cancel or resume. Using the
-            # tado dial or app instead pauses the schedule until the next
-            # block. "Now" says what is in charge: schedule, setback, manual
-            # hold, boost, manual override (dial/app) or shadow mode.
-            - type: heading
-              heading: Heating
-              heading_style: title
-              icon: mdi:circle
-            - type: entities
-              entities:
-                - type: attribute
-                  entity: sensor.heating_computed_setpoint
-                  attribute: reason
-                  name: Now
-                  icon: mdi:circle
-                - entity: sensor.heating_desired_target
-                  name: Target
-                - entity: sensor.heating_reference_temperature
-                  name: Reference room
-                - entity: input_number.heating_manual_target
-                  name: Set until next block
-                - entity: input_datetime.heating_hold_until
-                  name: Held until
-            - type: grid
-              columns: 3
-              square: false
-              cards:
-                - type: button
-                  entity: timer.heating_boost
-                  name: Boost 15 min
-                  icon: mdi:circle
-                  show_state: true
-                  tap_action:
-                    action: perform-action
-                    perform_action: timer.start
-                    target:
-                      entity_id: timer.heating_boost
-                - type: button
-                  name: Cancel boost
-                  icon: mdi:circle
-                  tap_action:
-                    action: perform-action
-                    perform_action: timer.cancel
-                    target:
-                      entity_id: timer.heating_boost
-                - type: button
-                  entity: script.heating_resume
-                  name: Resume schedule
-                  icon: mdi:circle
-                  tap_action:
-                    action: perform-action
-                    perform_action: script.heating_resume
-            - type: entities
-              title: Heating details
-              entities:
-                - entity: climate.heating
-                  name: tado (bedroom)
-                - entity: sensor.heating_bias
-                  name: Bias (tado − room)
-                - entity: sensor.heating_computed_setpoint
-                  name: Setpoint sent
-                - entity: input_datetime.heating_override_until
-                  name: Paused until (dial/app)
-                - entity: input_number.heating_setback
-                  name: Setback
-                - entity: input_boolean.heating_controller_enabled
-                  name: Live (off = shadow mode)
 
             # statistics-graph rather than history-graph. It plots long-term
             # statistics instead of raw recorder states, so `stat_types: [mean]`
@@ -543,6 +470,111 @@ views:
               tap_action:
                 action: navigate
                 navigation_path: /hassio/ingress/a0d7b954_adguard
+
+  # ═══════════════════════════════ HEATING ══════════════════════════════
+  # packages/heating.yaml: HA owns the schedule and drives tado over HomeKit.
+  # This view is the place to change the heating. The slider holds a
+  # temperature until the next schedule block, measured in that block's room
+  # like the schedule itself; the tiles boost, cancel a boost or resume. The
+  # tado dial or app still work but pause the schedule until the next block.
+  - title: Heating
+    path: heating
+    icon: mdi:circle
+    type: panel
+    cards:
+      # Same mod-card padding wrapper as the other views.
+      - type: custom:mod-card
+        card_mod:
+          style: |
+            ha-card {
+              background: none;
+              border: none;
+              box-shadow: none;
+              padding: 0 12px;
+            }
+        card:
+          type: vertical-stack
+          cards:
+            - type: entities
+              entities:
+                - entity: sensor.heating_status
+                  name: Now
+                  icon: mdi:circle
+                - entity: sensor.heating_desired_target
+                  name: Target
+                # Only inside a block; between blocks there is no reference
+                # room and the sensor is unavailable by design.
+                - type: conditional
+                  conditions:
+                    - entity: sensor.heating_reference_temperature
+                      state_not: unavailable
+                  row:
+                    entity: sensor.heating_reference_temperature
+                    name: Reference room now
+                - entity: input_number.heating_manual_target
+                  name: Set until next block
+
+            - type: grid
+              columns: 3
+              square: false
+              cards:
+                - type: tile
+                  entity: timer.heating_boost
+                  name: Boost 15 min
+                  icon: mdi:circle
+                  tap_action: &boost
+                    action: perform-action
+                    perform_action: timer.start
+                    target:
+                      entity_id: timer.heating_boost
+                  icon_tap_action: *boost
+                - type: tile
+                  entity: timer.heating_boost
+                  name: Cancel boost
+                  icon: mdi:circle
+                  hide_state: true
+                  tap_action: &cancel
+                    action: perform-action
+                    perform_action: timer.cancel
+                    target:
+                      entity_id: timer.heating_boost
+                  icon_tap_action: *cancel
+                - type: tile
+                  entity: script.heating_resume
+                  name: Resume schedule
+                  icon: mdi:circle
+                  hide_state: true
+                  tap_action: &resume
+                    action: perform-action
+                    perform_action: script.heating_resume
+                  icon_tap_action: *resume
+
+            # Raw states, not statistics: the target is a step function and
+            # averaging would smear the block edges.
+            - type: history-graph
+              title: Last 24 hours
+              hours_to_show: 24
+              entities:
+                - entity: sensor.heating_desired_target
+                  name: Target
+                - entity: sensor.heating_reference_temperature
+                  name: Reference room
+                - entity: sensor.heating_computed_setpoint
+                  name: Sent to tado
+
+            - type: entities
+              title: Details
+              entities:
+                - entity: climate.heating
+                  name: tado (bedroom)
+                - entity: sensor.heating_bias
+                  name: Bias (tado − room)
+                - entity: sensor.heating_computed_setpoint
+                  name: Sent to tado
+                - entity: input_number.heating_setback
+                  name: Setback (between blocks)
+                - entity: input_boolean.heating_controller_enabled
+                  name: Live (off = shadow mode)
 
   # ═════════════════════════════ BUTTONS ══════════════════════════════
   # Copied from dashboard-giacomo. The two placeholder "New section"

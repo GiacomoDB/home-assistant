@@ -180,6 +180,29 @@ script:
 
 template:
   - sensor:
+      # One readable line for the dashboard: what is in charge and until when.
+      - name: Heating status
+        unique_id: heating_status
+        state: >-
+          {% set ts = as_timestamp(now()) %}
+          {% set hold = state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) %}
+          {% set pause = state_attr('input_datetime.heating_override_until', 'timestamp') | float(0) %}
+          {% set nxt = state_attr('schedule.heating', 'next_event') %}
+          {% set until = ' until ' ~ as_local(nxt).strftime('%H:%M') if nxt else '' %}
+          {% set target = states('sensor.heating_desired_target') %}
+          {%- if is_state('timer.heating_boost', 'active') -%}
+            Boost to 25 °C until {{ as_local(as_datetime(state_attr('timer.heating_boost', 'finishes_at'))).strftime('%H:%M') }}
+          {%- elif pause > ts -%}
+            Paused by the tado dial/app until {{ pause | timestamp_custom('%H:%M') }}
+          {%- elif hold > ts -%}
+            Holding {{ target }} °C until {{ hold | timestamp_custom('%H:%M') }}
+          {%- elif is_state('schedule.heating', 'on') -%}
+            {{ state_attr('schedule.heating', 'room') }} at {{ target }} °C{{ until }}
+          {%- else -%}
+            Setback {{ target }} °C{{ until }}
+          {%- endif -%}
+          {{ ' (shadow mode)' if is_state('input_boolean.heating_controller_enabled', 'off') else '' }}
+
       - name: Heating desired target
         unique_id: heating_desired_target
         unit_of_measurement: "°C"
@@ -366,11 +389,11 @@ automation:
       - trigger: state
         entity_id: input_number.heating_manual_target
     conditions:
-      # Not the value restored at startup.
+      # Only a person moving it: a dashboard change carries a user_id, while
+      # heating_slider_sync and the value restored at startup do not.
       - condition: template
         value_template: >-
-          {{ trigger.from_state is not none
-             and trigger.from_state.state not in ['unavailable', 'unknown']
+          {{ trigger.to_state.context.user_id is not none
              and trigger.to_state.state | is_number }}
     actions:
       - action: input_datetime.set_datetime
@@ -386,6 +409,29 @@ automation:
           entity_id: input_datetime.heating_override_until
         data:
           timestamp: 0
+
+  # Keeps the slider showing the current target, so it never sits at a stale
+  # value. No user_id on these changes, so heating_hold ignores them.
+  - id: heating_slider_sync
+    alias: "Heating: slider follows the target"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: sensor.heating_desired_target
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ states('sensor.heating_desired_target') | is_number
+             and states('sensor.heating_desired_target') | float
+                 != states('input_number.heating_manual_target') | float(0) }}
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.heating_manual_target
+        data:
+          value: "{{ [[states('sensor.heating_desired_target') | float, 24] | min, 14] | max }}"
 
   - id: heating_manual_override
     alias: "Heating: manual change pauses the schedule"

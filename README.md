@@ -23,7 +23,7 @@ docs/ENTITIES.md     every entity ID this repo depends on
 
 ### Home
 
-`dashboards/home.yaml` — phone-first, four views, deployed over the dashboard
+`dashboards/home.yaml` — phone-first, five views, deployed over the dashboard
 at `dashboard-general`.
 
 **Home** — the at-a-glance view:
@@ -50,6 +50,12 @@ days of daily visits. The counts need `packages/litter_box.yaml` installed.
 `adguard-card.yaml`, 24-hour trends, and a tile for every switch the AdGuard
 integration exposes. AdGuard Home runs as the `a0d7b954_adguard` add-on and is
 the LAN's DNS server, so what it blocks is blocked for every device.
+
+**Heating** — the controls for `packages/heating.yaml`: a status line (what is
+in charge and until when), the target, a slider that holds a temperature until
+the next schedule block, Boost / Cancel boost / Resume schedule tiles, 24 hours
+of target vs reference room vs what was sent to tado, and the details (bias,
+setback, the Live switch).
 
 **Buttons** — the light and switch buttons.
 
@@ -140,7 +146,7 @@ single file so neither can be installed without the other.
 | `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average, notifying on a 35%+ deviation in either direction. A sustained change in a cat's water intake is worth catching early, and it is not something you notice by glancing at a chart. |
 | `bath_humidity.yaml` | Notifies when the bathroom stays above 70% humidity for two hours *and* sits 10+ points above the hall — sustained damp rather than the harmless spike after a shower. |
 | `litter_box.yaml` | No automation. A template sensor that gives the litter box occupancy sensor a 5-minute cooldown, so a cat holding still mid-visit doesn't count twice, and a `history_stats` sensor counting today's visits from it, because the occupancy sensor alone has no statistics to chart. |
-| `heating.yaml` | HA owns the heating schedule and drives tado **locally over HomeKit**: tado's cloud API allows 100 calls a day without Auto-Assist, too few to schedule through. Each schedule block names a target and the room whose sensor counts (kitchen at breakfast, babyroom overnight), and tado is sent `target + (tado reading − room reading)`. Controlled from the dashboard's Heating section: a slider holds a temperature until the next block, plus Boost / Cancel / Resume buttons. Changes from the tado dial or app pause it until the next block. It starts in shadow mode. Needs the HomeKit thermostat renamed to `climate.heating` — see the file header. Alerts if the thermostat is unreachable or a room stays 2° short. |
+| `heating.yaml` | HA owns the heating schedule and drives tado **locally over HomeKit**: tado's cloud API allows 100 calls a day without Auto-Assist, too few to schedule through. Each schedule block names a target and the room whose sensor counts (kitchen at breakfast, babyroom overnight), and tado is sent `target + (tado reading − room reading)`. Controlled from the dashboard's **Heating** view: a slider holds a temperature until the next block, plus Boost / Cancel / Resume buttons. Changes from the tado dial or app pause it until the next block. It starts in shadow mode. Needs the HomeKit thermostat renamed to `climate.heating` — see the file header. Alerts if the thermostat is unreachable or a room stays 2° short. |
 | `water_leak.yaml` | High-priority repeating alarm while any `device_class: moisture` sensor is wet, with an all-clear when it dries. The only alert here where minutes matter, so it is deliberately louder than the rest. |
 
 The four alerts push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
