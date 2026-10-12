@@ -141,16 +141,18 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | `binary_sensor.cat_in_litter_box` | `packages/litter_box.yaml` | The Myggspray occupancy sensor with a 5-minute cooldown: stays `on` until the raw sensor has been clear for 5 minutes, so one visit is one `on` |
 | `sensor.litter_box_visits_today` | `packages/litter_box.yaml` | Visits since midnight — `on` transitions of `binary_sensor.cat_in_litter_box`, from `history_stats` |
 | `schedule.heating` | `packages/heating.yaml` | Heating blocks. While a block is on, attributes `target`, `room`, `sensor` say what it wants and which room counts |
-| `sensor.heating_desired_target` | `packages/heating.yaml` | The current block's target, or the setback outside blocks |
+| `sensor.heating_desired_target` | `packages/heating.yaml` | The manual target during a hold, else the current block's target, or the setback outside blocks |
 | `sensor.heating_reference_temperature` | `packages/heating.yaml` | The current block's room sensor. Unavailable outside blocks, or when the sensor is down or silent for 2 h |
 | `sensor.heating_bias` | `packages/heating.yaml` | tado reading − reference room, clamped ±3; 0 when there's no reference |
-| `sensor.heating_computed_setpoint` | `packages/heating.yaml` | What tado is sent: desired + bias, rounded to 0.5, or 25 during a boost. `reason` attribute: schedule / setback / boost / manual override / shadow mode |
+| `sensor.heating_computed_setpoint` | `packages/heating.yaml` | What tado is sent: desired + bias, rounded to 0.5, or 25 during a boost. `reason` attribute: schedule / setback / manual hold / boost / manual override / shadow mode |
 | `input_boolean.heating_controller_enabled` | `packages/heating.yaml` | Off = shadow mode: computes and logs, never writes |
 | `input_number.heating_setback` | `packages/heating.yaml` | Target outside blocks; reset to 16 on restart |
 | `input_number.heating_last_written` | `packages/heating.yaml` | Bookkeeping: last setpoint sent, so the bridge's echo isn't taken as a manual change |
-| `input_datetime.heating_override_until` | `packages/heating.yaml` | A manual change pauses the controller until this time (the next block) |
-| `timer.heating_boost` | `packages/heating.yaml` | Running = 25 °C boost. Started by the center-button blueprint |
-| `script.heating_resume` | `packages/heating.yaml` | Ends a manual pause now |
+| `input_number.heating_manual_target` | `packages/heating.yaml` | The dashboard's manual control. Moving it holds this target, measured in the block's room, until the next block |
+| `input_datetime.heating_hold_until` | `packages/heating.yaml` | End of the current dashboard hold (the next block) |
+| `input_datetime.heating_override_until` | `packages/heating.yaml` | A change from the tado dial or app pauses the controller until this time (the next block) |
+| `timer.heating_boost` | `packages/heating.yaml` | Running = 25 °C boost. Started from the dashboard's Boost button |
+| `script.heating_resume` | `packages/heating.yaml` | Ends a hold or a pause now |
 
 It reads empty for roughly the first week, and the automation stays deliberately
 silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an

@@ -44,13 +44,19 @@
 # its 10-minute check finds the setpoint 1 degree off, or 0.5 off and at least
 # 30 minutes since the last write. Expect tens of writes a day, not hundreds.
 #
-# MANUAL CHANGES WIN UNTIL THE NEXT BLOCK
-# A setpoint the controller did not write (dial, tado app, HA UI, the scroll
-# wheel), or the mode leaving `heat`, pauses the controller until the next
-# schedule boundary. It recognises its own writes by recording each value in
-# `input_number.heating_last_written` BEFORE sending it, so the echo from the
-# bridge matches and does not count as a manual change. `script.heating_resume`
-# ends a pause early.
+# MANUAL CONTROL IS ON THE DASHBOARD
+# Moving `input_number.heating_manual_target` starts a HOLD: that target
+# replaces the schedule's until the next block, still measured against the
+# block's room sensor. So 22 means "the living room at 22", not "tado's spot in
+# the bedroom at 22". Boost (`timer.heating_boost`, 25 for 15 minutes) and
+# `script.heating_resume` (ends a hold or a pause now) are dashboard buttons too.
+#
+# A change made anywhere else -- the tado dial, the tado app, the climate
+# entity's own dialog -- or the mode leaving `heat` PAUSES the controller until
+# the next block instead, since that number is tado's own and has no room
+# behind it. The controller recognises its own writes by recording each value
+# in `input_number.heating_last_written` BEFORE sending it, so the echo from
+# the bridge matches and does not count as a manual change.
 #
 # SHADOW MODE
 # `input_boolean.heating_controller_enabled` is off until you turn it on. While
@@ -121,6 +127,15 @@ input_number:
     unit_of_measurement: "°C"
     mode: box
     icon: mdi:circle
+  # The dashboard's manual control. Moving it starts a hold; see MANUAL CONTROL.
+  heating_manual_target:
+    name: Heating manual target
+    min: 14
+    max: 24
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: slider
+    icon: mdi:circle
   # Bookkeeping, not a control: the last setpoint the controller sent. See
   # MANUAL CHANGES above.
   heating_last_written:
@@ -138,6 +153,11 @@ input_datetime:
     has_date: true
     has_time: true
     icon: mdi:circle
+  heating_hold_until:
+    name: Heating hold until
+    has_date: true
+    has_time: true
+    icon: mdi:circle
 
 timer:
   heating_boost:
@@ -152,7 +172,9 @@ script:
     sequence:
       - action: input_datetime.set_datetime
         target:
-          entity_id: input_datetime.heating_override_until
+          entity_id:
+            - input_datetime.heating_override_until
+            - input_datetime.heating_hold_until
         data:
           timestamp: 0
 
@@ -165,7 +187,9 @@ template:
         state_class: measurement
         state: >-
           {% set setback = states('input_number.heating_setback') | float(16) %}
-          {% if is_state('schedule.heating', 'on') %}
+          {% if state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) > as_timestamp(now()) %}
+            {{ states('input_number.heating_manual_target') | float(setback) }}
+          {% elif is_state('schedule.heating', 'on') %}
             {{ state_attr('schedule.heating', 'target') | float(setback) }}
           {% else %}
             {{ setback }}
@@ -228,6 +252,7 @@ template:
             {%- if is_state('timer.heating_boost', 'active') -%} boost
             {%- elif state_attr('input_datetime.heating_override_until', 'timestamp') | float(0) > as_timestamp(now()) -%} manual override
             {%- elif is_state('input_boolean.heating_controller_enabled', 'off') -%} shadow mode
+            {%- elif state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) > as_timestamp(now()) -%} manual hold
             {%- elif is_state('schedule.heating', 'on') -%} schedule
             {%- else -%} setback
             {%- endif -%}
@@ -256,6 +281,8 @@ automation:
         entity_id:
           - input_boolean.heating_controller_enabled
           - input_datetime.heating_override_until
+          - input_datetime.heating_hold_until
+          - input_number.heating_manual_target
           - input_number.heating_setback
         id: boundary
       - trigger: homeassistant
@@ -328,6 +355,37 @@ automation:
               message: >-
                 would set {{ setpoint }} °C (tado is set to {{ current }} °C,
                 {{ states('climate.heating') }}): {{ state_attr('sensor.heating_computed_setpoint', 'reason') }}
+
+  - id: heating_hold
+    alias: "Heating: dashboard target holds until the next block"
+    description: >-
+      Moving the dashboard's manual target starts a hold until the next
+      schedule boundary, and ends any pause from the dial or the tado app.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_number.heating_manual_target
+    conditions:
+      # Not the value restored at startup.
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none
+             and trigger.from_state.state not in ['unavailable', 'unknown']
+             and trigger.to_state.state | is_number }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.heating_hold_until
+        data:
+          # No next block (an empty schedule) means a 4-hour hold.
+          timestamp: >-
+            {{ as_timestamp(state_attr('schedule.heating', 'next_event'),
+                            as_timestamp(now()) + 14400) }}
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.heating_override_until
+        data:
+          timestamp: 0
 
   - id: heating_manual_override
     alias: "Heating: manual change pauses the schedule"

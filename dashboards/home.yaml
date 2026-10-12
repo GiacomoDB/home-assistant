@@ -93,34 +93,72 @@ views:
 
             # ─────────────────────────── HEATING ──────────────────────────
             # packages/heating.yaml: HA owns the schedule and drives tado over
-            # HomeKit. Desired is what the schedule asks of the reference
-            # room; the setpoint is what tado is sent, shifted by the bias
-            # between tado's own reading and that room. "Why" says what is in
-            # charge: schedule, setback, boost, manual override or shadow mode.
+            # HomeKit. This is the only place heating is meant to be changed:
+            # the slider holds a temperature until the next schedule block,
+            # measured in the block's room (so it is compensated like the
+            # schedule), and the buttons boost, cancel or resume. Using the
+            # tado dial or app instead pauses the schedule until the next
+            # block. "Now" says what is in charge: schedule, setback, manual
+            # hold, boost, manual override (dial/app) or shadow mode.
+            - type: heading
+              heading: Heating
+              heading_style: title
+              icon: mdi:circle
             - type: entities
-              title: Heating
               entities:
-                - entity: climate.heating
-                  name: tado
+                - type: attribute
+                  entity: sensor.heating_computed_setpoint
+                  attribute: reason
+                  name: Now
+                  icon: mdi:circle
                 - entity: sensor.heating_desired_target
-                  name: Desired
+                  name: Target
                 - entity: sensor.heating_reference_temperature
                   name: Reference room
+                - entity: input_number.heating_manual_target
+                  name: Set until next block
+                - entity: input_datetime.heating_hold_until
+                  name: Held until
+            - type: grid
+              columns: 3
+              square: false
+              cards:
+                - type: button
+                  entity: timer.heating_boost
+                  name: Boost 15 min
+                  icon: mdi:circle
+                  show_state: true
+                  tap_action:
+                    action: perform-action
+                    perform_action: timer.start
+                    target:
+                      entity_id: timer.heating_boost
+                - type: button
+                  name: Cancel boost
+                  icon: mdi:circle
+                  tap_action:
+                    action: perform-action
+                    perform_action: timer.cancel
+                    target:
+                      entity_id: timer.heating_boost
+                - type: button
+                  entity: script.heating_resume
+                  name: Resume schedule
+                  icon: mdi:circle
+                  tap_action:
+                    action: perform-action
+                    perform_action: script.heating_resume
+            - type: entities
+              title: Heating details
+              entities:
+                - entity: climate.heating
+                  name: tado (bedroom)
                 - entity: sensor.heating_bias
                   name: Bias (tado − room)
                 - entity: sensor.heating_computed_setpoint
                   name: Setpoint sent
-                - type: attribute
-                  entity: sensor.heating_computed_setpoint
-                  attribute: reason
-                  name: Why
-                  icon: mdi:circle
                 - entity: input_datetime.heating_override_until
-                  name: Manual until
-                - entity: script.heating_resume
-                  name: Resume schedule
-                - entity: timer.heating_boost
-                  name: Boost
+                  name: Paused until (dial/app)
                 - entity: input_number.heating_setback
                   name: Setback
                 - entity: input_boolean.heating_controller_enabled
