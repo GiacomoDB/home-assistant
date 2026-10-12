@@ -566,7 +566,7 @@ views:
               title: Details
               entities:
                 - entity: climate.heating
-                  name: tado (bedroom)
+                  name: tado (boiler zone)
                 - entity: sensor.heating_bias
                   name: Bias (tado − room)
                 - entity: sensor.heating_computed_setpoint

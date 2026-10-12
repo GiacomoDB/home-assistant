@@ -13,10 +13,12 @@
 # the code is on the bridge label, and it must not also be in Apple Home), then
 # rename the Smart Thermostat's climate entity to `climate.heating`. Renaming
 # beats editing this file: the ID appears in every template below.
-# The thermostat is in the bedroom, so tado's own reading is the bedroom's. The
-# Wireless Temperature Sensor in the living room appears as a second, independent
-# zone. It's left off: there are no radiator valves, so the boiler heats every
-# room anyway, and one zone is all there is to drive.
+# `climate.heating` must be the tado zone wired to the boiler: the one whose
+# `hvac_action` goes to `heating` when its setpoint is above the room. Here
+# that's the "Tado Livingroom" device (SU0277360640), so tado's own reading is
+# the living room's. The other zone (RU3944153856) accepts setpoints but never
+# calls for heat; it's left off. There are no radiator valves, so the boiler
+# heats every room anyway.
 # In the tado app, set the room's manual control to "until you cancel". A
 # HomeKit setpoint is a manual overlay to tado, and with "until next time block"
 # tado would silently undo it at its own schedule boundaries.
@@ -271,6 +273,10 @@ template:
           {% endif %}
         availability: "{{ states('sensor.heating_desired_target') | is_number }}"
         attributes:
+          # heating_controller compares these between old and new state: a
+          # change in either is a real change, anything else is bias drift.
+          desired: "{{ states('sensor.heating_desired_target') }}"
+          room: "{{ state_attr('schedule.heating', 'room') }}"
           reason: >-
             {%- if is_state('timer.heating_boost', 'active') -%} boost
             {%- elif state_attr('input_datetime.heating_override_until', 'timestamp') | float(0) > as_timestamp(now()) -%} manual override
@@ -292,22 +298,16 @@ automation:
     mode: queued
     max: 3
     triggers:
-      # No `to:`, so attribute changes count too: two touching blocks keep the
-      # state `on` and change only the target and room.
+      # Triggered by the computed setpoint itself, never by its inputs.
+      # Triggering on the timer, slider or schedule raced the template: the run
+      # read the setpoint before it was re-rendered, so a boost was never sent
+      # and cancelling it sent 25 (2026-10-12). Every input -- schedule, boost,
+      # hold, setback, bias, Live, a pause ending -- moves either the state or
+      # the `reason`/`desired`/`room` attributes, and no `to:` means attribute
+      # changes fire too.
       - trigger: state
-        entity_id: schedule.heating
-        id: boundary
-      - trigger: state
-        entity_id: timer.heating_boost
-        id: boundary
-      - trigger: state
-        entity_id:
-          - input_boolean.heating_controller_enabled
-          - input_datetime.heating_override_until
-          - input_datetime.heating_hold_until
-          - input_number.heating_manual_target
-          - input_number.heating_setback
-        id: boundary
+        entity_id: sensor.heating_computed_setpoint
+        id: change
       - trigger: homeassistant
         event: start
         id: boundary
@@ -334,9 +334,18 @@ automation:
           since_write: >-
             {% set s = states.input_number.heating_last_written %}
             {{ (now() - s.last_changed).total_seconds() if s else 999999 }}
+          # Only bias drift is held back by the hysteresis; a new block, boost,
+          # hold, Live or a pause ending is sent straight away.
+          kind: >-
+            {% if trigger.id != 'change' %}{{ trigger.id }}
+            {% elif trigger.from_state is none
+                 or trigger.from_state.attributes.get('reason') != trigger.to_state.attributes.get('reason')
+                 or trigger.from_state.attributes.get('desired') != trigger.to_state.attributes.get('desired')
+                 or trigger.from_state.attributes.get('room') != trigger.to_state.attributes.get('room') %}boundary
+            {% else %}drift{% endif %}
           due: >-
             {% if not heating %}true
-            {% elif trigger.id == 'boundary' %}{{ gap > 0.05 }}
+            {% elif kind == 'boundary' %}{{ gap > 0.05 }}
             {% else %}{{ gap >= 1 or (gap >= 0.5 and since_write >= 1800) }}{% endif %}
       - condition: template
         value_template: "{{ due }}"
@@ -370,7 +379,7 @@ automation:
         # meanwhile, so the 10-minute check would find a gap almost every time.
         else:
           - condition: template
-            value_template: "{{ trigger.id == 'boundary' }}"
+            value_template: "{{ kind == 'boundary' }}"
           - action: logbook.log
             data:
               name: Heating (shadow mode)

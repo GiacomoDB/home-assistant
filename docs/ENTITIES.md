@@ -94,12 +94,17 @@ nothing in this repo calls it.
 
 | Entity ID | Meaning |
 |---|---|
-| `climate.heating` | Device *Tado Bedroom*: the Smart Thermostat (RU3944153856), **in the bedroom**, via HomeKit Controller. **Renamed by hand** to this ID; the package depends on it. `current_temperature` is tado's own reading, so the bedroom's. |
-| `climate.tado_smart_thermostat_su0277360640` | Device *Tado Livingroom*: the Wireless Temperature Sensor, **in the living room**. tado shows it as a separate zone that's independent of the bedroom one. Kept **off**, and nothing in this repo uses it. |
+| `climate.heating` | Device *Tado Livingroom* (SU0277360640), via HomeKit Controller: **the zone wired to the boiler**. **Renamed by hand** to this ID; the package depends on it. `current_temperature` is tado's own reading, the living room's. |
+| `climate.tado_smart_thermostat_ru3944153856` | Device *Tado Bedroom* (RU3944153856). A separate, independent tado zone that accepts setpoints but never calls for heat (stayed `idle` at 25 °C against 20.7). Kept **off**, and nothing in this repo uses it. |
+
+**How the boiler zone was identified (2026-10-12):** `hvac_action` is tado's
+own report of whether the zone is calling for heat. Set to heat 22 against
+20.8, the SU zone went `heating` within 6 seconds. The RU zone stayed `idle`
+even at 25 against 20.7. Check `hvac_action`, not the setpoint, if this ever
+needs re-checking.
 
 There are no radiator valves, so whenever the boiler runs, every radiator in the
-flat heats. One zone is all HA needs to drive. Keep the Living Room zone off in
-the tado app, so it can't ask for heat behind the schedule's back.
+flat heats. One zone is all HA needs to drive. Keep the other zone off.
 
 The schedule's reference rooms are the climate sensors above (living room,
 kitchen, babyroom). Package entities are listed under *Derived entities*.
