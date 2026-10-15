@@ -16,7 +16,9 @@
 # - Cycle counters (washes, dries, vacuum runs) with `state_class:
 #   total_increasing`, so they get long-term statistics and the dashboard can
 #   chart them per week and month. SmartThings has no counter of its own, so
-#   these start at 0 on the day this file is installed.
+#   these start at 0 on the day this file is installed. A cycle already
+#   running at that moment is counted when it finishes, but has no length or
+#   energy: its start was never seen.
 # - The last wash's and dry's length and energy.
 #
 # WHAT COUNTS AS A CYCLE
@@ -52,6 +54,16 @@ template:
         for:
           minutes: 30
         id: settled
+      # Re-render on start and on template reload, with no other effect: a
+      # trigger-based sensor stays `unknown` until its first trigger, and an
+      # unknown counter records no statistics, so the counters would have no
+      # history until the first finished cycle.
+      - trigger: homeassistant
+        event: start
+        id: boot
+      - trigger: event
+        event_type: event_template_reloaded
+        id: boot
     variables:
       energy: "{{ states('sensor.washing_machine_energy') }}"
       # Only a run from stop is a new cycle; see WHAT COUNTS AS A CYCLE.
@@ -119,6 +131,13 @@ template:
         for:
           minutes: 30
         id: settled
+      # Start and template reload: see the washer's.
+      - trigger: homeassistant
+        event: start
+        id: boot
+      - trigger: event
+        event_type: event_template_reloaded
+        id: boot
     variables:
       energy: "{{ states('sensor.tumble_dryer_energy') }}"
       new_cycle: >-
@@ -176,16 +195,25 @@ template:
       - trigger: state
         entity_id: vacuum.robot_vacuum
         to: cleaning
+        id: run
+      # Start and template reload: see the washer's.
+      - trigger: homeassistant
+        event: start
+        id: boot
+      - trigger: event
+        event_type: event_template_reloaded
+        id: boot
+    variables:
+      new_run: >-
+        {{ trigger.id == 'run' and trigger.from_state is not none
+           and trigger.from_state.state not in ['cleaning', 'paused', 'unavailable'] }}
     sensor:
       - name: Robot vacuum runs
         unique_id: robot_vacuum_runs
         unit_of_measurement: runs
         state_class: total_increasing
         icon: mdi:circle
-        state: >-
-          {{ this.state | int(0)
-             + (1 if trigger.from_state is not none
-                     and trigger.from_state.state not in ['cleaning', 'paused', 'unavailable'] else 0) }}
+        state: "{{ this.state | int(0) + (1 if new_run else 0) }}"
 
   # ─────────────────────────────── STATUS ───────────────────────────────
   # One readable line per device for the dashboard. Unknown phases fall back
