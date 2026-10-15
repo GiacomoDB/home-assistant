@@ -16,8 +16,11 @@
 #   HA_SSH_USER    default root (what the Terminal & SSH add-on gives you)
 #   HA_CONFIG_DIR  default /config
 #
-# Deliberately NOT part of the GitHub Actions workflow: that would mean SSH
-# access to the instance from the public internet.
+# Normally CI deploys packages on a push to main, by having HA pull them
+# (see docs/SETUP.md, "Automatic deploys"). This script is the bootstrap for
+# that -- it installs packages/deploy.yaml and /config/deploy/pull_packages.py,
+# which CI can't do before they exist -- and the manual fallback. It stays on
+# the LAN: SSH is never reachable from GitHub.
 
 set -euo pipefail
 
@@ -26,6 +29,7 @@ SSH_HOST="${HA_SSH_HOST:-}"
 SSH_PORT="${HA_SSH_PORT:-22}"
 SSH_USER="${HA_SSH_USER:-root}"
 REMOTE_DIR="${HA_CONFIG_DIR:-/config}/packages"
+DEPLOY_DIR="${HA_CONFIG_DIR:-/config}/deploy"
 RESTART=0
 
 for arg in "$@"; do
@@ -64,6 +68,13 @@ echo "==> copying packages/ to $SSH_USER@$SSH_HOST:$REMOTE_DIR"
 COPYFILE_DISABLE=1 tar czf - --exclude='._*' --exclude='.DS_Store' -C "$REPO_ROOT/packages" . \
   | ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
       "mkdir -p '$REMOTE_DIR' && tar xzf - -C '$REMOTE_DIR' && ls -1 '$REMOTE_DIR'"
+
+# The script CI's deploys run inside HA (packages/deploy.yaml calls it). Every
+# pull updates it after the first, so this only matters for the bootstrap.
+echo "==> installing scripts/pull_packages.py to $DEPLOY_DIR"
+ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+    "mkdir -p '$DEPLOY_DIR' && cat > '$DEPLOY_DIR/pull_packages.py'" \
+  < "$REPO_ROOT/scripts/pull_packages.py"
 
 if [ "$RESTART" -eq 1 ]; then
   # Over the same SSH session rather than `ha.py reload --restart`: that goes

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Home Dashboard — phone-first. Five views: Home, Fountain, AdGuard, Heating, Buttons.
+# Home Dashboard — phone-first. Six views: Home, Fountain, AdGuard, Heating, Appliances, Buttons.
 #
 # Merged from the dashboards that used to be separate:
 #   dashboard-general  → the Air Quality and Cat Fountain cards
@@ -18,7 +18,7 @@
 # the Buttons view does, and side margins come from card-mod on each stack —
 # panel views have almost none of their own.
 #
-# Deployed by .github/workflows/deploy-dashboards.yml on every push to main.
+# Deployed by .github/workflows/deploy.yml on every push to main.
 # Edit this file, not the HA UI — a deploy overwrites whatever is live.
 # See docs/SETUP.md for credentials and docs/ENTITIES.md for the entity list.
 #
@@ -474,8 +474,8 @@ views:
   # ═══════════════════════════════ HEATING ══════════════════════════════
   # packages/heating.yaml: HA owns the schedule and drives tado over HomeKit.
   # This view is the place to change the heating. The slider holds a
-  # temperature until the next schedule block, measured in that block's room
-  # like the schedule itself; the tiles boost, cancel a boost or resume. The
+  # temperature until the next schedule block, measured in the bedroom like
+  # the schedule itself; the tiles boost, cancel a boost or resume. The
   # tado dial or app still work but pause the schedule until the next block.
   - title: Heating
     path: heating
@@ -502,15 +502,8 @@ views:
                   icon: mdi:circle
                 - entity: sensor.heating_desired_target
                   name: Target
-                # Only inside a block; between blocks there is no reference
-                # room and the sensor is unavailable by design.
-                - type: conditional
-                  conditions:
-                    - entity: sensor.heating_reference_temperature
-                      state_not: unavailable
-                  row:
-                    entity: sensor.heating_reference_temperature
-                    name: Reference room now
+                - entity: sensor.heating_reference_temperature
+                  name: Bedroom now
                 - entity: input_number.heating_manual_target
                   name: Set until next block
 
@@ -558,7 +551,7 @@ views:
                 - entity: sensor.heating_desired_target
                   name: Target
                 - entity: sensor.heating_reference_temperature
-                  name: Reference room
+                  name: Bedroom
                 - entity: sensor.heating_computed_setpoint
                   name: Sent to tado
 
@@ -568,13 +561,200 @@ views:
                 - entity: climate.heating
                   name: tado (boiler zone)
                 - entity: sensor.heating_bias
-                  name: Bias (tado − room)
+                  name: Bias (tado − bedroom)
                 - entity: sensor.heating_computed_setpoint
                   name: Sent to tado
                 - entity: input_number.heating_setback
                   name: Setback (between blocks)
                 - entity: input_boolean.heating_controller_enabled
                   name: Live (off = shadow mode)
+
+  # ════════════════════════════ APPLIANCES ════════════════════════════
+  # Samsung SmartThings: washer, dryer, robot vacuum. Stats only, no controls.
+  # Status lines, cycle counters and last-cycle figures come from
+  # packages/appliances.yaml; energy is SmartThings' own lifetime counters.
+  #
+  # Every energy and cycle chart is `stat_types: [change]`: all of them are
+  # total_increasing, so per-period `change` is the amount used or the cycles
+  # run in that period (see the Fountain view for the stat_types trap). The
+  # energy counters have statistics since 2025-12; the cycle counters start
+  # when the package is installed, so their charts fill in from then.
+  #
+  # No power charts: SmartThings reports 0 W for all three at all times.
+  - title: Appliances
+    path: appliances
+    icon: mdi:circle
+    type: panel
+    cards:
+      # Same mod-card padding wrapper as the other views.
+      - type: custom:mod-card
+        card_mod:
+          style: |
+            ha-card {
+              background: none;
+              border: none;
+              box-shadow: none;
+              padding: 0 12px;
+            }
+        card:
+          type: vertical-stack
+          cards:
+            - type: entities
+              entities:
+                - entity: sensor.washing_machine_status
+                  name: Washer
+                  icon: mdi:circle
+                - entity: sensor.tumble_dryer_status
+                  name: Dryer
+                  icon: mdi:circle
+                - entity: sensor.robot_vacuum_status
+                  name: Vacuum
+                  icon: mdi:circle
+
+            # ─────────────────────────── LAUNDRY ──────────────────────────
+            - type: heading
+              heading: Laundry
+              heading_style: title
+              icon: mdi:circle
+            # Calendar month to date, from statistics.
+            - type: grid
+              columns: 2
+              square: false
+              cards:
+                - type: statistic
+                  entity: sensor.washing_machine_cycles
+                  name: Washes this month
+                  icon: mdi:circle
+                  period: &this_month
+                    calendar:
+                      period: month
+                  stat_type: change
+                - type: statistic
+                  entity: sensor.tumble_dryer_cycles
+                  name: Dries this month
+                  icon: mdi:circle
+                  period: *this_month
+                  stat_type: change
+                - type: statistic
+                  entity: sensor.washing_machine_energy
+                  name: Washer this month
+                  icon: mdi:circle
+                  period: *this_month
+                  stat_type: change
+                - type: statistic
+                  entity: sensor.tumble_dryer_energy
+                  name: Dryer this month
+                  icon: mdi:circle
+                  period: *this_month
+                  stat_type: change
+            # last_changed is when the last cycle finished (the length) or was
+            # measured (the energy, 30 minutes after the machine stopped).
+            - type: grid
+              columns: 2
+              square: false
+              cards:
+                - type: tile
+                  entity: sensor.washing_machine_last_cycle
+                  name: Last wash
+                  icon: mdi:circle
+                  state_content: [state, last_changed]
+                - type: tile
+                  entity: sensor.tumble_dryer_last_cycle
+                  name: Last dry
+                  icon: mdi:circle
+                  state_content: [state, last_changed]
+                - type: tile
+                  entity: sensor.washing_machine_last_cycle_energy
+                  name: Last wash energy
+                  icon: mdi:circle
+                - type: tile
+                  entity: sensor.tumble_dryer_last_cycle_energy
+                  name: Last dry energy
+                  icon: mdi:circle
+            # Recorder history, so each phase (wash, rinse, spin...) is its
+            # own coloured block on a timeline.
+            - type: history-graph
+              title: Last 48 hours
+              hours_to_show: 48
+              entities:
+                - entity: sensor.washing_machine_job_state
+                  name: Washer
+                - entity: sensor.tumble_dryer_job_state
+                  name: Dryer
+            - type: statistics-graph
+              title: Cycles per week
+              days_to_show: 84
+              period: week
+              chart_type: bar
+              stat_types:
+                - change
+              entities:
+                - entity: sensor.washing_machine_cycles
+                  name: Washes
+                - entity: sensor.tumble_dryer_cycles
+                  name: Dries
+            - type: statistics-graph
+              title: Energy per day
+              days_to_show: 30
+              period: day
+              chart_type: bar
+              stat_types:
+                - change
+              entities:
+                - entity: sensor.washing_machine_energy
+                  name: Washer
+                - entity: sensor.tumble_dryer_energy
+                  name: Dryer
+
+            # ─────────────────────────── VACUUM ───────────────────────────
+            - type: heading
+              heading: Vacuum
+              heading_style: title
+              icon: mdi:circle
+            - type: grid
+              columns: 2
+              square: false
+              cards:
+                - type: statistic
+                  entity: sensor.robot_vacuum_runs
+                  name: Runs this month
+                  icon: mdi:circle
+                  period: *this_month
+                  stat_type: change
+                # last_changed of the counter is when the last run started.
+                - type: tile
+                  entity: sensor.robot_vacuum_runs
+                  name: Last run
+                  icon: mdi:circle
+                  state_content: last_changed
+            - type: history-graph
+              title: Last 7 days
+              hours_to_show: 168
+              entities:
+                - entity: sensor.robot_vacuum_movement
+                  name: Vacuum
+
+            # ─────────────────────────── ENERGY ───────────────────────────
+            # A year of monthly totals for all three. The vacuum's is mostly
+            # the dock: about 0.13 kWh a day while it sits charging.
+            - type: heading
+              heading: Energy
+              heading_style: title
+              icon: mdi:circle
+            - type: statistics-graph
+              title: Energy per month
+              days_to_show: 365
+              period: month
+              chart_type: bar
+              stat_types:
+                - change
+              entities:
+                - entity: sensor.washing_machine_energy
+                  name: Washer
+                - entity: sensor.tumble_dryer_energy
+                  name: Dryer
+                - entity: sensor.robot_vacuum_energy
+                  name: Vacuum
 
   # ═════════════════════════════ BUTTONS ══════════════════════════════
   # Copied from dashboard-giacomo. The two placeholder "New section"

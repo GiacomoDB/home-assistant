@@ -1,0 +1,86 @@
+name: Deploy
+
+# Deploys packages/ and dashboards/ into Home Assistant whenever main changes.
+# Pull requests only get the offline validation job -- no secrets, no writes.
+#
+# Packages first, so the dashboards that follow find their entities:
+#   1. HA pulls packages/ at this commit from GitHub itself (shell_command in
+#      packages/deploy.yaml runs scripts/pull_packages.py). Nothing reaches HA
+#      but the WebSocket and REST API through the tunnel; no SSH.
+#   2. HA's config check. A failure rolls the packages back and fails the run,
+#      so a broken package is never loaded.
+#   3. reload_all, or a restart when a change can't be reloaded, then a wait
+#      until HA is running again.
+#   4. The dashboards.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dashboards/**"
+      - "packages/**"
+      - "scripts/**"
+      - "*.yaml"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "dashboards/**"
+      - "packages/**"
+      - "scripts/**"
+      - "*.yaml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dashboards: connect and check entities, but don't write. Skips packages."
+        type: boolean
+        default: false
+
+# Never let two deploys race each other, or a restart.
+concurrency:
+  group: ha-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - run: pip install -r scripts/requirements.txt
+      - run: python scripts/ha.py validate
+
+  deploy:
+    name: Deploy to Home Assistant
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      HA_URL: ${{ secrets.HA_URL }}
+      HA_TOKEN: ${{ secrets.HA_TOKEN }}
+      # Only needed if a Cloudflare Access policy fronts the tunnel.
+      # Unset secrets arrive as empty strings and are ignored.
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - run: pip install -r scripts/requirements.txt
+      # A no-op when no package changed, so it runs on every deploy: that also
+      # catches up a package push that failed on an earlier run.
+      - name: Deploy packages
+        if: ${{ !inputs.dry_run }}
+        run: python scripts/ha.py deploy-packages --sha "$GITHUB_SHA"
+      - name: Deploy dashboards
+        run: |
+          python scripts/ha.py deploy \
+            ${{ inputs.dry_run && '--dry-run' || '' }}

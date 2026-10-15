@@ -106,8 +106,9 @@ needs re-checking.
 There are no radiator valves, so whenever the boiler runs, every radiator in the
 flat heats. One zone is all HA needs to drive. Keep the other zone off.
 
-The schedule's reference rooms are the climate sensors above (living room,
-kitchen, babyroom). Package entities are listed under *Derived entities*.
+The schedule's reference room is the Bedroom
+(`sensor.alpstuga_air_quality_monitor_temperature`), at all hours. Package
+entities are listed under *Derived entities*.
 
 ---
 
@@ -145,24 +146,46 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | `sensor.cat_water_7_day_average` | `packages/cat_water_anomaly.yaml` | Trailing 7-day mean of daily fountain intake, from a `statistics` sensor over `yesterday_s_water_consumption` |
 | `binary_sensor.cat_in_litter_box` | `packages/litter_box.yaml` | The Myggspray occupancy sensor with a 5-minute cooldown: stays `on` until the raw sensor has been clear for 5 minutes, so one visit is one `on` |
 | `sensor.litter_box_visits_today` | `packages/litter_box.yaml` | Visits since midnight — `on` transitions of `binary_sensor.cat_in_litter_box`, from `history_stats` |
-| `schedule.heating` | `packages/heating.yaml` | Heating blocks. While a block is on, attributes `target`, `room`, `sensor` say what it wants and which room counts |
-| `sensor.heating_status` | `packages/heating.yaml` | One line for the dashboard: what is in charge and until when, e.g. "Living Room at 20.5 °C until 22:00" |
+| `schedule.heating` | `packages/heating.yaml` | Heating blocks. While a block is on, its `target` attribute is the bedroom's target |
+| `sensor.heating_status` | `packages/heating.yaml` | One line for the dashboard: what is in charge and until when, e.g. "Bedroom at 20.5 °C until 22:00" |
 | `sensor.heating_desired_target` | `packages/heating.yaml` | The manual target during a hold, else the current block's target, or the setback outside blocks |
-| `sensor.heating_reference_temperature` | `packages/heating.yaml` | The current block's room sensor. Unavailable outside blocks, or when the sensor is down or silent for 2 h |
-| `sensor.heating_bias` | `packages/heating.yaml` | tado reading − reference room, clamped ±3; 0 when there's no reference |
+| `sensor.heating_reference_temperature` | `packages/heating.yaml` | The bedroom sensor, in and out of blocks. When it's down or silent for 2 h, tado's own reading stands in (`source` attribute says which) |
+| `sensor.heating_bias` | `packages/heating.yaml` | tado reading − bedroom, clamped ±3; 0 while tado's reading stands in |
 | `sensor.heating_computed_setpoint` | `packages/heating.yaml` | What tado is sent: desired + bias, rounded to 0.5, or 25 during a boost. `reason` attribute: schedule / setback / manual hold / boost / manual override / shadow mode |
 | `input_boolean.heating_controller_enabled` | `packages/heating.yaml` | Off = shadow mode: computes and logs, never writes |
 | `input_number.heating_setback` | `packages/heating.yaml` | Target outside blocks; reset to 16 on restart |
 | `input_number.heating_last_written` | `packages/heating.yaml` | Bookkeeping: last setpoint sent, so the bridge's echo isn't taken as a manual change |
-| `input_number.heating_manual_target` | `packages/heating.yaml` | The dashboard's manual control. Follows the current target on its own; when a person moves it, that target is held, measured in the block's room, until the next block |
+| `input_number.heating_manual_target` | `packages/heating.yaml` | The dashboard's manual control. Follows the current target on its own; when a person moves it, that target is held, measured in the bedroom, until the next block |
 | `input_datetime.heating_hold_until` | `packages/heating.yaml` | End of the current dashboard hold (the next block) |
 | `input_datetime.heating_override_until` | `packages/heating.yaml` | A change from the tado dial or app pauses the controller until this time (the next block) |
 | `timer.heating_boost` | `packages/heating.yaml` | Running = 25 °C boost. Started from the dashboard's Boost button |
 | `script.heating_resume` | `packages/heating.yaml` | Ends a hold or a pause now |
+| `sensor.washing_machine_status`, `sensor.tumble_dryer_status`, `sensor.robot_vacuum_status` | `packages/appliances.yaml` | One line per device for the Appliances view, e.g. "Rinsing · done at 15:27", "Docked, charging · 100%" |
+| `sensor.washing_machine_cycles`, `sensor.tumble_dryer_cycles` | `packages/appliances.yaml` | Completed cycles (job state reached finish), total_increasing for weekly/monthly charts. Counted from the day the package was installed |
+| `sensor.robot_vacuum_runs` | `packages/appliances.yaml` | Cleaning runs started, total_increasing |
+| `sensor.washing_machine_last_cycle`, `sensor.tumble_dryer_last_cycle` | `packages/appliances.yaml` | Minutes from start (run from stop) to finish of the last cycle |
+| `sensor.washing_machine_last_cycle_energy`, `sensor.tumble_dryer_last_cycle_energy` | `packages/appliances.yaml` | Energy of the last cycle, from the lifetime counter, taken 30 min after the stop. 0.1 kWh steps, so approximate |
 
 It reads empty for roughly the first week, and the automation stays deliberately
 silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an
 average built from one or two days.
+
+---
+
+## Appliances — Samsung SmartThings
+
+Cloud integration, read-only use: nothing in this repo controls these. The
+Appliances view and `packages/appliances.yaml` read them.
+
+| Device | Entities used | Notes |
+|---|---|---|
+| Washing machine (DA_WM_TP2_20_COMMON) | `sensor.washing_machine_machine_state` (run / pause / stop), `_job_state` (weight_sensing, wash, rinse, spin, finish, none), `_completion_time`, `_energy` | |
+| Tumble dryer (DA_WM_TP2_20_COMMON) | `sensor.tumble_dryer_machine_state`, `_job_state` (drying, cooling, finished, none), `_completion_time`, `_energy` | |
+| Robot vacuum (POWERBOT_9500_19P) | `vacuum.robot_vacuum` (`unknown` while docked), `sensor.robot_vacuum_movement` (charging, homing, idle, alarm...), `_battery`, `binary_sensor.robot_vacuum_dust_bag_full`, `sensor.robot_vacuum_energy` | Energy is mostly the dock, about 0.13 kWh a day |
+
+`*_energy` are lifetime kWh counters (total_increasing, 0.1 kWh steps, about
+every 15 minutes) with long-term statistics since 2025-12. `*_power` always
+reads 0 W on all three, so nothing uses it. There is no programme name entity.
 
 ---
 

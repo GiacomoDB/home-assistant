@@ -1,0 +1,25 @@
+# Deploy: lets CI install packages/ from GitHub without SSH.
+#
+# On a push to main, `ha.py deploy-packages` (in .github/workflows/deploy.yml)
+# calls `pull_packages` over the WebSocket API with the pushed commit. The
+# script downloads that commit from GitHub and writes packages/; CI then runs
+# HA's config check, rolls back with `rollback_packages` if it fails, and
+# otherwise reloads or restarts. See scripts/pull_packages.py.
+#
+# The script must be at /config/deploy/pull_packages.py; push-packages.sh puts
+# it there the first time, and every pull updates it after that.
+#
+# The sha is passed as an argument, not through a shell: a shell_command with
+# a template runs without one. The script also accepts only a 40-hex sha that
+# is on main.
+#
+# SECURITY: anything merged to main now reaches HA, and a package can define
+# shell commands, so pushing to main is equivalent to running code on HA. Keep
+# 2FA on the GitHub account.
+#
+# shell_command can't be reloaded: changing this file needs a restart, which
+# the deploy notices and does by itself.
+
+shell_command:
+  pull_packages: "python3 /config/deploy/pull_packages.py pull {{ sha }}"
+  rollback_packages: "python3 /config/deploy/pull_packages.py rollback"

@@ -1,0 +1,257 @@
+# Appliances: the numbers behind the Appliances view in dashboards/home.yaml.
+# Read-only -- nothing here controls a device.
+#
+# WHAT SAMSUNG SMARTTHINGS GIVES (checked 2026-10-15)
+# Washer and dryer: a machine state (run / pause / stop), a job state (the
+# phase: wash, rinse, spin, finish / drying, cooling, finished), a completion
+# time, and a lifetime energy counter in 0.1 kWh steps that reports about every
+# 15 minutes. The energy counters have long-term statistics back to 2025-12,
+# so the dashboard's energy charts work straight away. Power always reads 0 W
+# and there is no programme name, so neither appears anywhere.
+# Vacuum: movement (charging, homing, cleaning, alarm...), battery, dust bag
+# and an energy counter, which mostly measures the dock: about 0.13 kWh a day.
+#
+# WHAT THIS FILE ADDS
+# - A one-line status per device, for the top of the view.
+# - Cycle counters (washes, dries, vacuum runs) with `state_class:
+#   total_increasing`, so they get long-term statistics and the dashboard can
+#   chart them per week and month. SmartThings has no counter of its own, so
+#   these start at 0 on the day this file is installed.
+# - The last wash's and dry's length and energy.
+#
+# WHAT COUNTS AS A CYCLE
+# A cycle STARTS when the machine state goes to run from stop. Resuming from a
+# pause, or coming back from unavailable after a restart or a cloud blip, is
+# the same cycle. A cycle is COUNTED when the job state reaches finish(ed),
+# so a cancelled programme is not counted. The cloud does drop the odd event
+# (a wash on 2026-10-10 never reported its end), so expect a rare miss.
+#
+# LAST CYCLE'S ENERGY
+# The counter's start value is recorded when the cycle starts. The difference
+# is taken 30 minutes after the machine stops, once the counter has caught up,
+# or at the next start if that comes first. The counter moves in 0.1 kWh
+# steps, so a short wash can read 0.0 or 0.1; treat it as approximate.
+#
+# Trigger-based template sensors keep their state and attributes across
+# restarts, which is what lets the counters and the start values survive one.
+
+template:
+  # ─────────────────────────────── WASHER ───────────────────────────────
+  - triggers:
+      - trigger: state
+        entity_id: sensor.washing_machine_machine_state
+        to: run
+        id: start
+      - trigger: state
+        entity_id: sensor.washing_machine_job_state
+        to: [finish, finished]
+        id: finish
+      - trigger: state
+        entity_id: sensor.washing_machine_machine_state
+        to: stop
+        for:
+          minutes: 30
+        id: settled
+    variables:
+      energy: "{{ states('sensor.washing_machine_energy') }}"
+      # Only a run from stop is a new cycle; see WHAT COUNTS AS A CYCLE.
+      new_cycle: >-
+        {{ trigger.id == 'start' and trigger.from_state is not none
+           and trigger.from_state.state not in ['run', 'pause', 'unavailable', 'unknown'] }}
+      finished: >-
+        {{ trigger.id == 'finish' and trigger.from_state is not none
+           and trigger.from_state.state not in ['unavailable', 'unknown'] }}
+    sensor:
+      - name: Washing machine cycles
+        unique_id: washing_machine_cycles
+        unit_of_measurement: cycles
+        state_class: total_increasing
+        icon: mdi:circle
+        state: "{{ this.state | int(0) + (1 if finished else 0) }}"
+
+      - name: Washing machine last cycle
+        unique_id: washing_machine_last_cycle
+        unit_of_measurement: min
+        device_class: duration
+        icon: mdi:circle
+        state: >-
+          {% set started = this.attributes.get('started') %}
+          {% if finished and started %}
+            {{ ((as_timestamp(now()) - as_timestamp(started)) / 60) | round(0) | int }}
+          {% else %}
+            {{ this.state if this.state | is_number else none }}
+          {% endif %}
+        attributes:
+          started: "{{ now().isoformat() if new_cycle else this.attributes.get('started') }}"
+
+      - name: Washing machine last cycle energy
+        unique_id: washing_machine_last_cycle_energy
+        unit_of_measurement: kWh
+        icon: mdi:circle
+        state: >-
+          {% set e0 = this.attributes.get('energy_start') %}
+          {% if (trigger.id == 'settled' or new_cycle) and this.attributes.get('open')
+                and energy | is_number and e0 is number %}
+            {{ (energy | float - e0) | round(1) }}
+          {% else %}
+            {{ this.state if this.state | is_number else none }}
+          {% endif %}
+        attributes:
+          energy_start: >-
+            {{ (energy | float(none)) if new_cycle else this.attributes.get('energy_start') }}
+          open: >-
+            {{ true if new_cycle else (false if trigger.id == 'settled' else this.attributes.get('open', false)) }}
+
+  # ─────────────────────────────── DRYER ────────────────────────────────
+  # Same as the washer, entity for entity.
+  - triggers:
+      - trigger: state
+        entity_id: sensor.tumble_dryer_machine_state
+        to: run
+        id: start
+      - trigger: state
+        entity_id: sensor.tumble_dryer_job_state
+        to: [finish, finished]
+        id: finish
+      - trigger: state
+        entity_id: sensor.tumble_dryer_machine_state
+        to: stop
+        for:
+          minutes: 30
+        id: settled
+    variables:
+      energy: "{{ states('sensor.tumble_dryer_energy') }}"
+      new_cycle: >-
+        {{ trigger.id == 'start' and trigger.from_state is not none
+           and trigger.from_state.state not in ['run', 'pause', 'unavailable', 'unknown'] }}
+      finished: >-
+        {{ trigger.id == 'finish' and trigger.from_state is not none
+           and trigger.from_state.state not in ['unavailable', 'unknown'] }}
+    sensor:
+      - name: Tumble dryer cycles
+        unique_id: tumble_dryer_cycles
+        unit_of_measurement: cycles
+        state_class: total_increasing
+        icon: mdi:circle
+        state: "{{ this.state | int(0) + (1 if finished else 0) }}"
+
+      - name: Tumble dryer last cycle
+        unique_id: tumble_dryer_last_cycle
+        unit_of_measurement: min
+        device_class: duration
+        icon: mdi:circle
+        state: >-
+          {% set started = this.attributes.get('started') %}
+          {% if finished and started %}
+            {{ ((as_timestamp(now()) - as_timestamp(started)) / 60) | round(0) | int }}
+          {% else %}
+            {{ this.state if this.state | is_number else none }}
+          {% endif %}
+        attributes:
+          started: "{{ now().isoformat() if new_cycle else this.attributes.get('started') }}"
+
+      - name: Tumble dryer last cycle energy
+        unique_id: tumble_dryer_last_cycle_energy
+        unit_of_measurement: kWh
+        icon: mdi:circle
+        state: >-
+          {% set e0 = this.attributes.get('energy_start') %}
+          {% if (trigger.id == 'settled' or new_cycle) and this.attributes.get('open')
+                and energy | is_number and e0 is number %}
+            {{ (energy | float - e0) | round(1) }}
+          {% else %}
+            {{ this.state if this.state | is_number else none }}
+          {% endif %}
+        attributes:
+          energy_start: >-
+            {{ (energy | float(none)) if new_cycle else this.attributes.get('energy_start') }}
+          open: >-
+            {{ true if new_cycle else (false if trigger.id == 'settled' else this.attributes.get('open', false)) }}
+
+  # ─────────────────────────────── VACUUM ───────────────────────────────
+  # One run per start of cleaning. While docked the vacuum entity reads
+  # `unknown`, so that counts as a valid "from"; resuming from paused, or
+  # reappearing after a restart, does not.
+  - triggers:
+      - trigger: state
+        entity_id: vacuum.robot_vacuum
+        to: cleaning
+    sensor:
+      - name: Robot vacuum runs
+        unique_id: robot_vacuum_runs
+        unit_of_measurement: runs
+        state_class: total_increasing
+        icon: mdi:circle
+        state: >-
+          {{ this.state | int(0)
+             + (1 if trigger.from_state is not none
+                     and trigger.from_state.state not in ['cleaning', 'paused', 'unavailable'] else 0) }}
+
+  # ─────────────────────────────── STATUS ───────────────────────────────
+  # One readable line per device for the dashboard. Unknown phases fall back
+  # to the raw value with underscores turned into spaces.
+  - sensor:
+      - name: Washing machine status
+        unique_id: washing_machine_status
+        icon: mdi:circle
+        state: >-
+          {% set m = states('sensor.washing_machine_machine_state') %}
+          {% set j = states('sensor.washing_machine_job_state') %}
+          {% set end = as_datetime(states('sensor.washing_machine_completion_time'), none) %}
+          {% set names = {'none': 'Starting', 'weight_sensing': 'Weighing the load',
+                          'wash': 'Washing', 'rinse': 'Rinsing', 'spin': 'Spinning',
+                          'finish': 'Finished', 'finished': 'Finished',
+                          'drying': 'Drying', 'cooling': 'Cooling down',
+                          'wrinkle_prevent': 'Wrinkle prevent'} %}
+          {%- if m == 'run' -%}
+            {{ names.get(j, j | replace('_', ' ') | capitalize) }}
+            {%- if end and end > now() %} · done at {{ as_local(end).strftime('%H:%M') }}{% endif %}
+          {%- elif m == 'pause' -%}
+            Paused
+          {%- elif m in ['unavailable', 'unknown'] -%}
+            Offline
+          {%- else -%}
+            Idle
+          {%- endif -%}
+
+      # Same as the washer's, with the dryer's entities.
+      - name: Tumble dryer status
+        unique_id: tumble_dryer_status
+        icon: mdi:circle
+        state: >-
+          {% set m = states('sensor.tumble_dryer_machine_state') %}
+          {% set j = states('sensor.tumble_dryer_job_state') %}
+          {% set end = as_datetime(states('sensor.tumble_dryer_completion_time'), none) %}
+          {% set names = {'none': 'Starting', 'weight_sensing': 'Weighing the load',
+                          'wash': 'Washing', 'rinse': 'Rinsing', 'spin': 'Spinning',
+                          'finish': 'Finished', 'finished': 'Finished',
+                          'drying': 'Drying', 'cooling': 'Cooling down',
+                          'wrinkle_prevent': 'Wrinkle prevent'} %}
+          {%- if m == 'run' -%}
+            {{ names.get(j, j | replace('_', ' ') | capitalize) }}
+            {%- if end and end > now() %} · done at {{ as_local(end).strftime('%H:%M') }}{% endif %}
+          {%- elif m == 'pause' -%}
+            Paused
+          {%- elif m in ['unavailable', 'unknown'] -%}
+            Offline
+          {%- else -%}
+            Idle
+          {%- endif -%}
+
+      - name: Robot vacuum status
+        unique_id: robot_vacuum_status
+        icon: mdi:circle
+        state: >-
+          {% set mv = states('sensor.robot_vacuum_movement') %}
+          {% set names = {'charging': 'Docked, charging', 'idle': 'Idle',
+                          'cleaning': 'Cleaning', 'point': 'Spot cleaning',
+                          'homing': 'Returning to the dock', 'alarm': 'Needs attention',
+                          'pause': 'Paused', 'off': 'Off', 'reserve': 'Scheduled'} %}
+          {% set battery = states('sensor.robot_vacuum_battery') %}
+          {%- if mv in ['unavailable', 'unknown'] -%}
+            Offline
+          {%- else -%}
+            {{ names.get(mv, mv | replace('_', ' ') | capitalize) }}
+            {%- if battery | is_number %} · {{ battery }}%{% endif %}
+            {%- if is_state('binary_sensor.robot_vacuum_dust_bag_full', 'on') %} · dust bag full{% endif %}
+          {%- endif -%}

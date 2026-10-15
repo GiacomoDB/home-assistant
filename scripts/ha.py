@@ -4,6 +4,7 @@
 Subcommands
 -----------
   deploy    push the dashboards listed in dashboards/dashboards.yaml into HA
+  deploy-packages  have HA pull packages/ at a commit, check, reload/restart
   entities  list entities matching a pattern, to fill in dashboard YAML
   validate  parse the dashboard YAML only -- no network, no credentials
 
@@ -423,13 +424,16 @@ def validate_packages() -> tuple[list[str], list[str]]:
             for old_key, new_key in (("trigger", "triggers"), ("action", "actions")):
                 if not automation.get(old_key) and not automation.get(new_key):
                     problems.append(f"{where} is missing '{new_key}'")
-            # `!include_dir_named` uses the filename as the package name, so a
-            # duplicate filename silently overwrites another package.
-            if "-" in path.stem:
-                problems.append(
-                    f"{path.name}: package names come from the filename; "
-                    f"use underscores so '{path.stem}' is a valid key"
-                )
+
+        # `!include_dir_named` uses the filename as the package name, so it
+        # must be a valid key. This used to sit inside the automation loop and
+        # so skipped packages without automations. scripts/pull_packages.py
+        # ignores any other filename, so the deploy would silently skip it.
+        if not re.fullmatch(r"[A-Za-z0-9_]+", path.stem):
+            problems.append(
+                f"{path.name}: package names come from the filename; "
+                f"use letters, digits and underscores so '{path.stem}' is a valid key"
+            )
 
         entities = referenced_entities(doc) | template_entities(doc)
         entities = {e for e in entities if not e.startswith("automation.")}
@@ -523,12 +527,14 @@ def cmd_entities(args) -> int:
     return 0
 
 
-def http_get_json(base_url: str, path: str, token: str, headers: dict):
-    """One-off REST GET.
+def http_get_json(base_url: str, path: str, token: str, headers: dict,
+                  method: str = "GET"):
+    """One-off REST call (GET unless `method` says otherwise).
 
-    Everything else here speaks WebSocket, but automation configs are only
-    reachable over REST -- `/api/config/automation/config/<id>` is what the
-    frontend's own editor calls. There is no WebSocket equivalent.
+    Everything else here speaks WebSocket, but two things are only reachable
+    over REST: automation configs -- `/api/config/automation/config/<id>` is
+    what the frontend's own editor calls -- and the config check,
+    `POST /api/config/core/check_config`. Neither has a WebSocket equivalent.
     """
     import urllib.error
     import urllib.request
@@ -540,6 +546,7 @@ def http_get_json(base_url: str, path: str, token: str, headers: dict):
     # the urllib default gets through.
     request = urllib.request.Request(
         base_url.rstrip("/") + path,
+        method=method,
         headers={
             "Authorization": f"Bearer {token}",
             "User-Agent": USER_AGENT,
@@ -547,7 +554,9 @@ def http_get_json(base_url: str, path: str, token: str, headers: dict):
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        # The config check validates every integration's config, so it can
+        # take a while on a busy instance.
+        with urllib.request.urlopen(request, timeout=120) as response:
             return json.load(response)
     except urllib.error.HTTPError as exc:
         # 404 means the automation is not UI-editable -- it came from YAML, so
@@ -767,6 +776,118 @@ def cmd_reload(args) -> int:
         ha.close()
 
     print(f"homeassistant.{service} called")
+    return 0
+
+
+def shell_command(ha, service: str, **data) -> dict:
+    """Run one of packages/deploy.yaml's shell commands and return its JSON.
+
+    The scripts print one JSON line on success. A non-zero exit comes back
+    as the response's returncode, or as a CommandError on versions that raise.
+    """
+    reply = ha.command(
+        "call_service", domain="shell_command", service=service,
+        service_data=data, return_response=True,
+    ) or {}
+    response = reply.get("response") or {}
+    if response.get("returncode", 0) != 0:
+        detail = (response.get("stderr") or response.get("stdout") or "").strip()
+        fail(f"shell_command.{service} exited {response['returncode']}: {detail}")
+    lines = (response.get("stdout") or "").strip().splitlines()
+    try:
+        return json.loads(lines[-1])
+    except (IndexError, ValueError):
+        fail(f"shell_command.{service} printed no result: {response!r}")
+
+
+def wait_until_running(url: str, token: str, limit: int = 600) -> None:
+    """Block until HA is back after a restart and has finished starting.
+
+    The WebSocket answers early in startup, so a connection alone proves
+    little; `get_config` reports the core state, and only RUNNING means every
+    integration (and so every entity a dashboard names) is loaded.
+    """
+    time.sleep(15)  # the restart takes a moment to begin; don't catch the old one
+    deadline = time.monotonic() + limit
+    while time.monotonic() < deadline:
+        try:
+            ha = HomeAssistant(url, token, headers=access_headers(), timeout=15)
+            try:
+                state = (ha.command("get_config") or {}).get("state")
+            finally:
+                ha.close()
+            if state == "RUNNING":
+                return
+        except (TransportError, CommandError, OSError, ValueError):
+            pass
+        time.sleep(10)
+    fail(f"Home Assistant did not come back to RUNNING within {limit}s")
+
+
+def cmd_deploy_packages(args) -> int:
+    """Install packages/ at a commit, the way CI does on a push to main.
+
+    HA pulls the commit itself (scripts/pull_packages.py, via the shell
+    commands in packages/deploy.yaml), so no SSH has to reach it. Then:
+    config check, and a rollback if it fails, so a broken package never gets
+    loaded; otherwise reload_all, or a restart if a changed domain can't be
+    reloaded, waiting until HA is running again so the dashboard deploy that
+    follows finds the new entities.
+    """
+    url, token = os.environ.get("HA_URL"), os.environ.get("HA_TOKEN")
+    ha = client_from_env()
+    print(f"connected to Home Assistant {ha.version}")
+
+    try:
+        result = shell_command(ha, "pull_packages", sha=args.sha)
+    except CommandError as exc:
+        if "not found" in str(exc).lower():
+            fail(
+                "shell_command.pull_packages does not exist in HA -- install "
+                "packages/deploy.yaml once with scripts/push-packages.sh --restart "
+                "(see docs/SETUP.md)"
+            )
+        raise
+
+    changed, removed = result.get("changed", []), result.get("removed", [])
+    print(f"  commit   {result.get('commit')}")
+    if not changed and not removed:
+        print("  packages unchanged; nothing to reload")
+        ha.close()
+        return 0
+    for name in changed:
+        print(f"  changed  {name}")
+    for name in removed:
+        print(f"  removed  {name}")
+
+    check = http_get_json(url, "/api/config/core/check_config", token,
+                          access_headers(), method="POST") or {
+        "errors": "no answer from /api/config/core/check_config"}
+    if check.get("result") != "valid":
+        restored = shell_command(ha, "rollback_packages")
+        ha.close()
+        fail(
+            "config check failed, packages rolled back "
+            f"({len(restored.get('rolled_back', []))} file(s) restored):\n"
+            f"{check.get('errors') or check}"
+        )
+    print("  config check passed")
+
+    if result.get("restart"):
+        for reason in result.get("reasons", []):
+            print(f"  restart needed: {reason}")
+        try:
+            ha.command("call_service", domain="homeassistant", service="restart")
+        except (TransportError, CommandError, OSError, ValueError):
+            pass  # the socket often closes before the result arrives
+        ha.close()
+        print("  restarting; waiting for Home Assistant to come back")
+        wait_until_running(url, token)
+        print("  Home Assistant is running")
+    else:
+        ha.command("call_service", domain="homeassistant", service="reload_all")
+        ha.close()
+        print("  reloaded YAML (homeassistant.reload_all)")
     return 0
 
 
@@ -993,6 +1114,17 @@ def main() -> int:
              "new platform sensor. Brief downtime.",
     )
     reload.set_defaults(func=cmd_reload)
+
+    deploy_packages = subparsers.add_parser(
+        "deploy-packages",
+        help="have HA pull packages/ at a commit on main, check, then "
+             "reload or restart (what CI runs)",
+    )
+    deploy_packages.add_argument(
+        "--sha", required=True,
+        help="full commit sha; HA refuses anything not on main",
+    )
+    deploy_packages.set_defaults(func=cmd_deploy_packages)
 
     subparsers.add_parser(
         "stats",

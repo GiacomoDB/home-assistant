@@ -34,6 +34,7 @@ it over to CI. Each links to the detail below.
 | 7 | Deploy for real and check the dashboard on your phone | laptop |
 | 8 | Add `HA_URL` + `HA_TOKEN` repository secrets | GitHub — see §2 |
 | 9 | Commit, push to `main`, watch the Action | GitHub → Actions |
+| 10 | Bootstrap package deploys once: `scripts/push-packages.sh --restart` | laptop, on the LAN — see *Packages* |
 
 Step 4 is the one people skip; without it HA refuses the connection as coming
 from an untrusted address and step 5 fails with a handshake error.
@@ -287,14 +288,7 @@ repo does not manage.
 ## Packages (automations)
 
 `packages/` holds automations and the helper entities they need, one file per
-feature. **These are not deployed by `ha.py deploy` or by GitHub Actions.**
-
-That is a real limitation, not an oversight. Dashboards are written over the
-WebSocket API, which has a `lovelace/config/save` command. There is no
-equivalent for arbitrary config files, so packages have to reach the config
-directory as files — by Samba, SSH, the File Editor add-on or Studio Code
-Server. `ha.py validate` still checks them, so CI catches a broken one before
-you copy it across.
+feature. They are deployed on every push to `main`, after a one-time bootstrap.
 
 ### One-time setup
 
@@ -306,64 +300,81 @@ homeassistant:
 ```
 
 `!include_dir_named` uses each **filename** as the package name, so names must
-be unique across the whole folder and must be valid keys — use underscores, not
-hyphens. `validate` fails on a hyphenated filename for that reason.
+be unique across the whole folder and must be valid keys — letters, digits and
+underscores. `validate` fails on any other filename for that reason, and the
+deploy skips it.
 
-### Installing or updating
+### Automatic deploys
 
-With the Terminal & SSH add-on, this is one command:
+The WebSocket API has `lovelace/config/save` for dashboards but nothing that
+writes config files. So HA **pulls** packages instead of having them pushed in,
+and SSH never has to be reachable from GitHub:
+
+1. On a push to `main`, `.github/workflows/deploy.yml` runs
+   `ha.py deploy-packages --sha <commit>`. That calls
+   `shell_command.pull_packages` (from `packages/deploy.yaml`) over the
+   WebSocket API, through the tunnel, with the same `HA_TOKEN` as the
+   dashboards.
+2. Inside HA, `/config/deploy/pull_packages.py`:
+   - asks GitHub whether the commit is on `main`, and refuses it otherwise
+     (GitHub serves a fork's commits from the parent repo's URLs);
+   - downloads that commit's tarball and reads only `packages/*.yaml` and
+     itself from it;
+   - snapshots `/config/packages` to `/config/deploy/packages.prev`;
+   - writes the changed files and deletes the ones an earlier pull installed
+     that the repo no longer has. Files added by hand on the HA side are
+     never touched;
+   - reports what changed, and whether any change is outside what
+     `reload_all` can apply.
+3. CI runs HA's config check (`POST /api/config/core/check_config`). If it
+   fails, `shell_command.rollback_packages` restores the snapshot and the run
+   fails, so a broken package is never loaded.
+4. CI calls `homeassistant.reload_all`, or restarts when a change needs it
+   (a `sensor:` platform, `shell_command:`, any domain outside the list in
+   `pull_packages.py`), and waits until HA is running again.
+5. The dashboards deploy last, so they find the new entities.
+
+The script updates itself from each pull. A push that changes nothing in
+`packages/` is a no-op apart from the dashboards.
+
+**Security.** Pushing to `main` now changes HA's config, and a package can
+define shell commands, so it is effectively running code on HA. Keep 2FA on
+the GitHub account. Pull requests never get the secrets, and the token alone
+can only deploy commits that are already on `main`.
+
+### Bootstrap (once), and the manual fallback
+
+CI can't call a shell command that isn't there yet, so the first install goes
+over SSH on the LAN with the Terminal & SSH add-on:
 
 ```sh
 export HA_SSH_HOST=homeassistant.local     # LAN address, not the tunnel
-scripts/push-packages.sh                   # copy + reload
-scripts/push-packages.sh --restart         # copy + full restart
+scripts/push-packages.sh --restart         # copy + install pull script + restart
 ```
 
-It validates first and refuses to copy anything that fails — a broken package
-takes the whole config down at restart, which is far worse than not deploying.
-It never deletes on the remote side, so files you added there by hand survive.
+It validates first and refuses to copy anything that fails. It copies
+`packages/` (including `deploy.yaml`), puts `scripts/pull_packages.py` at
+`/config/deploy/`, then runs `ha core check && ha core restart`. The restart
+is required: `shell_command` can't be reloaded. From then on, pushes to `main`
+deploy by themselves. The script stays as a fallback when GitHub or the tunnel
+is down. Without `--restart` it reloads instead, through `ha.py` and the
+WebSocket API, so that needs `HA_URL`/`HA_TOKEN` exported.
 
 **Finding the host.** HA OS advertises `homeassistant.local` over mDNS, and
 on this network it resolves, with the Terminal & SSH add-on listening on the
 default port 22. If it doesn't resolve for you, look up the IP under
 Settings → System → Network in HA, or run
 `dscacheutil -q host -a name homeassistant.local` on macOS. The tunnel
-hostname in `HA_URL` will not work here.
-
-**Before the first push**, check what is already there:
-
-```sh
-ssh root@homeassistant.local 'grep -n packages /config/configuration.yaml; ls /config/packages'
-```
-
-No `packages:` line means the one-time setup above hasn't been done, and HA
-will ignore the folder. The script copies **every** package in `packages/`, not
-just the one you changed, so any listed here but missing on the HA side start
-running with that push. Most of them are alerts that send notifications to your phone.
-
-Use `--restart` the first time, and any time a package **adds** a `sensor:`
-block: `reload_all` picks up changed automations and templates, but not a newly
-added platform sensor such as the statistics sensor in `cat_water_anomaly.yaml`.
-
-`--restart` runs `ha core check && ha core restart` over SSH, so it needs no
-token. The plain reload still goes through `ha.py` and the WebSocket API, so it
-needs `HA_URL`/`HA_TOKEN` exported. Until 2026-09-28 the restart went that way
-too, and without the token the copy succeeded but no restart happened. The
-giveaway is `ha core logs` starting before your push, and entities from the new
-package reading "Entity not found".
-
-`HA_SSH_HOST` must be the LAN hostname or IP. The Cloudflare tunnel carries
-HTTPS only, and putting SSH through it would be a much larger exposure than the
-WebSocket token. For the same reason this is deliberately **not** part of the
-GitHub Actions workflow — that would mean SSH access from the public internet.
+hostname in `HA_URL` will not work here: the tunnel carries HTTPS only, and
+putting SSH through it would be a much larger exposure than the token.
 
 Without SSH, do it by hand:
 
 | Step | What |
 |---|---|
-| 1 | Copy `packages/*.yaml` into `<config>/packages/` (Samba, File Editor, Studio Code Server) |
+| 1 | Copy `packages/*.yaml` into `<config>/packages/` and `scripts/pull_packages.py` into `<config>/deploy/` (Samba, File Editor, Studio Code Server) |
 | 2 | Developer Tools → YAML → **Check configuration** |
-| 3 | Developer Tools → YAML → **Reload all YAML**, or restart per the note above |
+| 3 | Restart Home Assistant |
 
 ### Verifying it loaded
 

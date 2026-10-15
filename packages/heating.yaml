@@ -24,21 +24,21 @@
 # tado would silently undo it at its own schedule boundaries.
 #
 # HOW IT DECIDES
-# The schedule says what temperature a ROOM should be, and which room's sensor
-# counts at that time of day: the kitchen at breakfast, the living room in the
-# evening, the babyroom overnight. tado can only measure where its own sensor
-# is, so the controller aims tado at a shifted number:
+# Every temperature here -- schedule, setback, hold -- is what the BEDROOM
+# should be, measured by its own sensor (the Alpstuga monitor), at all hours.
+# tado can only measure where its own sensor is, in the living room, so the
+# controller aims tado at a shifted number:
 #
-#     setpoint = desired + (tado reading - room reading)
+#     setpoint = desired + (tado reading - bedroom reading)
 #
 # The bias is clamped to +/-3 degrees and the setpoint rounded to 0.5, so a
 # misbehaving sensor cannot drive the boiler to its limits. tado keeps its own
 # control loop; it is just pointed at the right number. tado's own offset
 # setting would be the tidier lever, but it is cloud-only.
 #
-# If the room sensor is unavailable or has not reported for 2 hours (the IKEA
-# Thread sensors do drop), the bias becomes 0 and tado's own reading is used.
-# Outside every schedule block the setback applies, also against tado's reading.
+# If the bedroom sensor is unavailable or has not reported for 2 hours, tado's
+# own reading stands in for it: the bias becomes 0 and the reference sensor
+# still shows a temperature, with `source` saying which one it is.
 #
 # FEW WRITES ON PURPOSE
 # Every write wakes the battery-powered thermostat over radio. The controller
@@ -49,8 +49,8 @@
 # MANUAL CONTROL IS ON THE DASHBOARD
 # Moving `input_number.heating_manual_target` starts a HOLD: that target
 # replaces the schedule's until the next block, still measured against the
-# block's room sensor. So 22 means "the living room at 22", not "tado's spot in
-# the bedroom at 22". Boost (`timer.heating_boost`, 25 for 15 minutes) and
+# bedroom sensor. So 22 means "the bedroom at 22", not "tado's spot in the
+# living room at 22". Boost (`timer.heating_boost`, 25 for 15 minutes) and
 # `script.heating_resume` (ends a hold or a pause now) are dashboard buttons too.
 #
 # A change made anywhere else -- the tado dial, the tado app, the climate
@@ -72,30 +72,31 @@
 # "resume schedule" in the app hands the house back to tado.
 #
 # TUNING
-#   schedule.heating           blocks below: target, room label, room sensor
+#   schedule.heating           blocks below: the bedroom's target
 #   input_number.heating_setback   outside the blocks (dashboard-editable)
-#   2 h staleness, +/-3 bias clamp, 25 boost -- in the template sensors
+#   bedroom sensor, 2 h staleness -- in heating_reference_temperature
+#   +/-3 bias clamp, 25 boost -- in the other template sensors
 #   1.0 / 0.5 + 30 min hysteresis -- in heating_controller's `due`
 #   alert: 2 degrees short for 2 hours -- in heating_alert
 
 schedule:
   heating:
     name: Heating
-    # The sensor IDs are anchored on first use so each is written once.
+    # Targets are the bedroom's (see HOW IT DECIDES).
     # Blocks may touch (to == next from) but not overlap; "24:00:00" ends a day.
     monday: &weekday
       - from: "00:00:00"
         to: "06:30:00"
-        data: {target: 18, room: Babyroom, sensor: &babyroom sensor.babyroom_babyroom_temperature}
+        data: {target: 18}
       - from: "06:30:00"
         to: "08:30:00"
-        data: {target: 20, room: Kitchen, sensor: &kitchen sensor.timmerflotte_temp_hmd_sensor_temperature}
+        data: {target: 20}
       - from: "17:00:00"
         to: "22:00:00"
-        data: {target: 20.5, room: Living Room, sensor: &living sensor.timmerflotte_temp_hmd_sensor_temperature_4}
+        data: {target: 20.5}
       - from: "22:00:00"
         to: "24:00:00"
-        data: {target: 18, room: Babyroom, sensor: *babyroom}
+        data: {target: 18}
     tuesday: *weekday
     wednesday: *weekday
     thursday: *weekday
@@ -103,13 +104,13 @@ schedule:
     saturday: &weekend
       - from: "00:00:00"
         to: "08:00:00"
-        data: {target: 18, room: Babyroom, sensor: *babyroom}
+        data: {target: 18}
       - from: "08:00:00"
         to: "22:00:00"
-        data: {target: 20, room: Living Room, sensor: *living}
+        data: {target: 20}
       - from: "22:00:00"
         to: "24:00:00"
-        data: {target: 18, room: Babyroom, sensor: *babyroom}
+        data: {target: 18}
     sunday: *weekend
 
 input_boolean:
@@ -186,7 +187,7 @@ template:
       - name: Heating status
         unique_id: heating_status
         state: >-
-          {% set ts = as_timestamp(now()) %}
+          {% set ts = as_timestamp(now()) + 1 %}
           {% set hold = state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) %}
           {% set pause = state_attr('input_datetime.heating_override_until', 'timestamp') | float(0) %}
           {% set nxt = state_attr('schedule.heating', 'next_event') %}
@@ -199,7 +200,7 @@ template:
           {%- elif hold > ts -%}
             Holding {{ target }} °C until {{ hold | timestamp_custom('%H:%M') }}
           {%- elif is_state('schedule.heating', 'on') -%}
-            {{ state_attr('schedule.heating', 'room') }} at {{ target }} °C{{ until }}
+            Bedroom at {{ target }} °C{{ until }}
           {%- else -%}
             Setback {{ target }} °C{{ until }}
           {%- endif -%}
@@ -212,36 +213,50 @@ template:
         state_class: measurement
         state: >-
           {% set setback = states('input_number.heating_setback') | float(16) %}
-          {% if state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) > as_timestamp(now()) %}
+          {# + 1: a hold ends at the next block's first second, and every
+             template rendered at that boundary must agree it has ended. #}
+          {% if state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) > as_timestamp(now()) + 1 %}
             {{ states('input_number.heating_manual_target') | float(setback) }}
           {% elif is_state('schedule.heating', 'on') %}
             {{ state_attr('schedule.heating', 'target') | float(setback) }}
           {% else %}
             {{ setback }}
           {% endif %}
-        attributes:
-          room: "{{ state_attr('schedule.heating', 'room') if is_state('schedule.heating', 'on') else 'none (setback)' }}"
 
-      # The current block's room sensor. Unavailable when there is no block, or
-      # the sensor is down or silent for 2 hours; the bias then falls back to 0.
+      # The bedroom sensor, in and out of blocks. When it is down or silent for
+      # 2 hours, tado's own reading stands in (bias 0) rather than the sensor
+      # going unavailable; failing that too, the bedroom's last value.
       # `last_reported` moves on every report, even an unchanged value, so a
-      # steady temperature does not look stale.
+      # steady temperature does not look stale. The sensor ID appears in each
+      # template below; change all of them together.
       - name: Heating reference temperature
         unique_id: heating_reference_temperature
         unit_of_measurement: "°C"
         device_class: temperature
         state_class: measurement
-        state: "{{ states(state_attr('schedule.heating', 'sensor')) }}"
+        state: >-
+          {% set s = states.sensor.alpstuga_air_quality_monitor_temperature %}
+          {% set tado = state_attr('climate.heating', 'current_temperature') %}
+          {% if s and s.state | is_number and (now() - s.last_reported).total_seconds() < 7200 %}
+            {{ s.state | float }}
+          {% elif tado is number %}
+            {{ tado }}
+          {% else %}
+            {{ states('sensor.alpstuga_air_quality_monitor_temperature') }}
+          {% endif %}
         availability: >-
-          {% set e = state_attr('schedule.heating', 'sensor') %}
-          {% set s = expand(e) if is_state('schedule.heating', 'on') and e is string else [] %}
-          {{ s | count == 1 and s[0].state | is_number
-             and (now() - s[0].last_reported).total_seconds() < 7200 }}
+          {{ states('sensor.alpstuga_air_quality_monitor_temperature') | is_number
+             or state_attr('climate.heating', 'current_temperature') is number }}
         attributes:
-          room: "{{ state_attr('schedule.heating', 'room') }}"
-          sensor: "{{ state_attr('schedule.heating', 'sensor') }}"
+          room: Bedroom
+          source: >-
+            {% set s = states.sensor.alpstuga_air_quality_monitor_temperature %}
+            {% if s and s.state | is_number and (now() - s.last_reported).total_seconds() < 7200 %}bedroom sensor
+            {% elif state_attr('climate.heating', 'current_temperature') is number %}tado (bedroom sensor down)
+            {% else %}bedroom sensor (stale){% endif %}
 
-      # How much warmer tado thinks it is than the room that matters.
+      # How much warmer tado thinks it is than the bedroom. 0 while tado's own
+      # reading stands in for the bedroom sensor.
       - name: Heating bias
         unique_id: heating_bias
         unit_of_measurement: "°C"
@@ -255,7 +270,7 @@ template:
             0
           {% endif %}
         attributes:
-          source: "{{ 'room sensor' if states('sensor.heating_reference_temperature') | is_number else 'tado' }}"
+          source: "{{ state_attr('sensor.heating_reference_temperature', 'source') or 'tado' }}"
 
       # What the controller sends (or, in shadow mode, would send).
       - name: Heating computed setpoint
@@ -276,12 +291,11 @@ template:
           # heating_controller compares these between old and new state: a
           # change in either is a real change, anything else is bias drift.
           desired: "{{ states('sensor.heating_desired_target') }}"
-          room: "{{ state_attr('schedule.heating', 'room') }}"
           reason: >-
             {%- if is_state('timer.heating_boost', 'active') -%} boost
-            {%- elif state_attr('input_datetime.heating_override_until', 'timestamp') | float(0) > as_timestamp(now()) -%} manual override
+            {%- elif state_attr('input_datetime.heating_override_until', 'timestamp') | float(0) > as_timestamp(now()) + 1 -%} manual override
             {%- elif is_state('input_boolean.heating_controller_enabled', 'off') -%} shadow mode
-            {%- elif state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) > as_timestamp(now()) -%} manual hold
+            {%- elif state_attr('input_datetime.heating_hold_until', 'timestamp') | float(0) > as_timestamp(now()) + 1 -%} manual hold
             {%- elif is_state('schedule.heating', 'on') -%} schedule
             {%- else -%} setback
             {%- endif -%}
@@ -303,7 +317,7 @@ automation:
       # read the setpoint before it was re-rendered, so a boost was never sent
       # and cancelling it sent 25 (2026-10-12). Every input -- schedule, boost,
       # hold, setback, bias, Live, a pause ending -- moves either the state or
-      # the `reason`/`desired`/`room` attributes, and no `to:` means attribute
+      # the `reason`/`desired` attributes, and no `to:` means attribute
       # changes fire too.
       - trigger: state
         entity_id: sensor.heating_computed_setpoint
@@ -324,7 +338,7 @@ automation:
         value_template: >-
           {{ is_state('timer.heating_boost', 'active')
              or state_attr('input_datetime.heating_override_until', 'timestamp') | float(0)
-                <= as_timestamp(now()) }}
+                <= as_timestamp(now()) + 1 }}
     actions:
       - variables:
           setpoint: "{{ states('sensor.heating_computed_setpoint') | float }}"
@@ -340,12 +354,19 @@ automation:
             {% if trigger.id != 'change' %}{{ trigger.id }}
             {% elif trigger.from_state is none
                  or trigger.from_state.attributes.get('reason') != trigger.to_state.attributes.get('reason')
-                 or trigger.from_state.attributes.get('desired') != trigger.to_state.attributes.get('desired')
-                 or trigger.from_state.attributes.get('room') != trigger.to_state.attributes.get('room') %}boundary
+                 or trigger.from_state.attributes.get('desired') != trigger.to_state.attributes.get('desired') %}boundary
             {% else %}drift{% endif %}
+          # tado set a degree or more above its own reading, yet not calling
+          # for heat: the setpoint reached the bridge but not the zone. Seen
+          # 2026-10-12, 25 against 20.8 left idle for 15 minutes. Re-sent on
+          # each 10-minute check; heating_alert reports it after 30 minutes.
+          stuck: >-
+            {{ heating and state_attr('climate.heating', 'hvac_action') == 'idle'
+               and current >= (state_attr('climate.heating', 'current_temperature') | float(99)) + 1 }}
           due: >-
             {% if not heating %}true
             {% elif kind == 'boundary' %}{{ gap > 0.05 }}
+            {% elif kind == 'tick' and stuck and gap <= 0.05 %}true
             {% else %}{{ gap >= 1 or (gap >= 0.5 and since_write >= 1800) }}{% endif %}
       - condition: template
         value_template: "{{ due }}"
@@ -361,15 +382,16 @@ automation:
               entity_id: input_number.heating_last_written
             data:
               value: "{{ setpoint }}"
-          - if:
-              - condition: template
-                value_template: "{{ not heating }}"
-            then:
-              - action: climate.set_hvac_mode
-                target:
-                  entity_id: climate.heating
-                data:
-                  hvac_mode: heat
+          # The mode goes with every write, not only when HA thinks the zone is
+          # off. tado has acted on mode + temperature every time, while a
+          # temperature alone, sent to a zone the bridge already reports as
+          # `heat`, was accepted and echoed back but never applied (2026-10-12).
+          # The bridge's reported mode can also be stale, so it isn't trusted.
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: climate.heating
+            data:
+              hvac_mode: heat
           - action: climate.set_temperature
             target:
               entity_id: climate.heating
@@ -499,12 +521,22 @@ automation:
         value_template: >-
           {{ is_state('input_boolean.heating_controller_enabled', 'on')
              and state_attr('sensor.heating_computed_setpoint', 'reason') == 'schedule'
-             and states('sensor.heating_reference_temperature') | is_number
+             and state_attr('sensor.heating_reference_temperature', 'source') == 'bedroom sensor'
              and states('sensor.heating_desired_target') | float(0)
                  - states('sensor.heating_reference_temperature') | float(0) >= 2 }}
         for:
           hours: 2
         id: cold
+      - trigger: template
+        value_template: >-
+          {{ is_state('input_boolean.heating_controller_enabled', 'on')
+             and is_state('climate.heating', 'heat')
+             and state_attr('climate.heating', 'hvac_action') == 'idle'
+             and state_attr('climate.heating', 'temperature') | float(0)
+                 >= state_attr('climate.heating', 'current_temperature') | float(99) + 1 }}
+        for:
+          minutes: 30
+        id: not_calling
     conditions:
       # At most one alert per 6 hours, as in bath_humidity.yaml.
       - condition: template
@@ -515,12 +547,19 @@ automation:
       - variables:
           notify_target: notify.mobile_app_pixel_8_pro
           title: >-
-            {{ 'Heating: thermostat unreachable' if trigger.id == 'unreachable'
-               else 'Heating: ' ~ state_attr('sensor.heating_reference_temperature', 'room') ~ ' not warming up' }}
+            {% if trigger.id == 'unreachable' %}Heating: thermostat unreachable
+            {% elif trigger.id == 'not_calling' %}Heating: tado ignoring HA
+            {% else %}Heating: {{ state_attr('sensor.heating_reference_temperature', 'room') }} not warming up{% endif %}
           summary: >-
             {% if trigger.id == 'unreachable' %}
             HA has not reached the tado thermostat over HomeKit for 30 minutes,
             so the schedule is not being applied. Check the Internet Bridge.
+            {% elif trigger.id == 'not_calling' %}
+            tado reports {{ state_attr('climate.heating', 'temperature') }} °C set
+            against {{ state_attr('climate.heating', 'current_temperature') }} °C
+            in the room, but has not called for heat for 30 minutes, even with
+            HA re-sending every 10 minutes. Check what the tado app shows for
+            that room; an open-window pause looks the same.
             {% else %}
             {{ state_attr('sensor.heating_reference_temperature', 'room') }} is
             {{ states('sensor.heating_reference_temperature') }} °C after two

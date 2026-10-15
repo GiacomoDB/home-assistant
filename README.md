@@ -1,17 +1,19 @@
 # Home Assistant
 
-Source of truth for my Home Assistant setup: dashboards, custom cards and
-blueprints. Dashboards are validated on every pull request and deployed to Home
-Assistant by GitHub Actions on every push to `main`.
+Source of truth for my Home Assistant setup: dashboards, packages, custom
+cards and blueprints. Everything is validated on every pull request, and
+dashboards and packages are deployed to Home Assistant by GitHub Actions on
+every push to `main`.
 
 ```
 dashboards/          dashboard configs + the manifest that maps them to HA
-packages/            automations + their helper entities — pushed over SSH
+packages/            automations + their helper entities — HA pulls them on deploy
 automations/_pulled/ read-only snapshots of the automations still owned by the
                      HA UI; move one into packages/ to take it under version control
 themes/              theme files — copied to HA by hand, not deployable
 scripts/ha.py        deploy / entity-lookup / validate CLI
-scripts/push-packages.sh  validate + copy packages/ over SSH + reload
+scripts/pull_packages.py  runs INSIDE HA: installs packages/ at a commit on main
+scripts/push-packages.sh  one-time bootstrap / manual fallback, over SSH on the LAN
 docs/SETUP.md        credentials, GitHub secrets, reverse-proxy notes
 docs/ENTITIES.md     every entity ID this repo depends on
 .github/workflows/   the deploy pipeline
@@ -23,7 +25,7 @@ docs/ENTITIES.md     every entity ID this repo depends on
 
 ### Home
 
-`dashboards/home.yaml` — phone-first, five views, deployed over the dashboard
+`dashboards/home.yaml` — phone-first, six views, deployed over the dashboard
 at `dashboard-general`.
 
 **Home** — the at-a-glance view:
@@ -54,8 +56,13 @@ the LAN's DNS server, so what it blocks is blocked for every device.
 **Heating** — the controls for `packages/heating.yaml`: a status line (what is
 in charge and until when), the target, a slider that holds a temperature until
 the next schedule block, Boost / Cancel boost / Resume schedule tiles, 24 hours
-of target vs reference room vs what was sent to tado, and the details (bias,
+of target vs bedroom vs what was sent to tado, and the details (bias,
 setback, the Live switch).
+
+**Appliances** — stats for the SmartThings washer, dryer and robot vacuum, no
+controls: a status line each, washes/dries/vacuum runs and kWh this month, the
+last cycle's length and energy, a 48-hour timeline of wash and dry phases,
+cycles per week, energy per day and per month.
 
 **Buttons** — the light and switch buttons.
 
@@ -119,8 +126,9 @@ export HA_TOKEN=...
 | `python3 scripts/ha.py entities fountain` | Look up entity IDs |
 | `python3 scripts/ha.py deploy --dry-run` | Check entities without writing |
 | `python3 scripts/ha.py deploy` | Push dashboards for real |
+| `python3 scripts/ha.py deploy-packages --sha <sha>` | Have HA pull `packages/` at a commit on main, check, reload or restart (what CI runs) |
 | `python3 scripts/ha.py reload` | Reload YAML after editing packages (`--restart` for a full restart) |
-| `HA_SSH_HOST=… scripts/push-packages.sh` | Validate, copy `packages/` over SSH, reload |
+| `HA_SSH_HOST=… scripts/push-packages.sh` | Bootstrap / fallback: copy `packages/` over SSH on the LAN, reload |
 
 `scripts/ha.py` re-runs itself under `venv/` automatically, so plain `python3`
 is correct regardless of what's on your `PATH`.
@@ -129,8 +137,8 @@ Only dashboards listed in `dashboards/dashboards.yaml` are deployed; everything
 else in your instance is left alone. See
 [docs/SETUP.md §0](docs/SETUP.md) for keeping or merging existing dashboards.
 
-In CI the same `deploy` step runs with `HA_URL` and `HA_TOKEN` repository
-secrets. Deploys overwrite the live dashboard, so edit the YAML here rather than
+In CI, `.github/workflows/deploy.yml` runs `deploy-packages` and then
+`deploy` with `HA_URL` and `HA_TOKEN` repository secrets. Deploys overwrite the live dashboard, so edit the YAML here rather than
 in the HA UI. A local `deploy` sends the working tree, uncommitted edits
 included; CI sends only what is committed — see
 [docs/SETUP.md §3](docs/SETUP.md#3-working-locally).
@@ -146,24 +154,27 @@ single file so neither can be installed without the other.
 | `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average, notifying on a 35%+ deviation in either direction. A sustained change in a cat's water intake is worth catching early, and it is not something you notice by glancing at a chart. |
 | `bath_humidity.yaml` | Notifies when the bathroom stays above 70% humidity for two hours *and* sits 10+ points above the hall — sustained damp rather than the harmless spike after a shower. |
 | `litter_box.yaml` | No automation. A template sensor that gives the litter box occupancy sensor a 5-minute cooldown, so a cat holding still mid-visit doesn't count twice, and a `history_stats` sensor counting today's visits from it, because the occupancy sensor alone has no statistics to chart. |
-| `heating.yaml` | HA owns the heating schedule and drives tado **locally over HomeKit**: tado's cloud API allows 100 calls a day without Auto-Assist, too few to schedule through. Each schedule block names a target and the room whose sensor counts (kitchen at breakfast, babyroom overnight), and tado is sent `target + (tado reading − room reading)`. Controlled from the dashboard's **Heating** view: a slider holds a temperature until the next block, plus Boost / Cancel / Resume buttons. Changes from the tado dial or app pause it until the next block. It starts in shadow mode. Needs the HomeKit thermostat renamed to `climate.heating` — see the file header. Alerts if the thermostat is unreachable or a room stays 2° short. |
+| `heating.yaml` | HA owns the heating schedule and drives tado **locally over HomeKit**: tado's cloud API allows 100 calls a day without Auto-Assist, too few to schedule through. Every target is the bedroom's, measured by its own sensor at all hours, and tado is sent `target + (tado reading − bedroom reading)`. Controlled from the dashboard's **Heating** view: a slider holds a temperature until the next block, plus Boost / Cancel / Resume buttons. Changes from the tado dial or app pause it until the next block. It starts in shadow mode. Needs the HomeKit thermostat renamed to `climate.heating` — see the file header. Alerts if the thermostat is unreachable, ignores HA, or the bedroom stays 2° short. |
+| `appliances.yaml` | No automation. The numbers behind the **Appliances** view: a status line per SmartThings device, cycle counters for the washer, dryer and vacuum (with long-term statistics, so they chart per week and month; SmartThings has no counter of its own), and the last wash's and dry's length and energy. |
+| `deploy.yaml` | Two shell commands, `pull_packages` and `rollback_packages`, that CI calls to deploy this folder. Not an automation; see above. |
 | `water_leak.yaml` | High-priority repeating alarm while any `device_class: moisture` sensor is wet, with an all-clear when it dries. The only alert here where minutes matter, so it is deliberately louder than the rest. |
 
 The four alerts push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
 notification, so an alert survives an undelivered push. `notify_target` at the
 top of each automation's variables is the single place to change that.
 
-**These are not deployed by `ha.py deploy`.** The WebSocket API can write
-dashboards but not arbitrary config files, so packages go over SSH instead:
+**Deployed on every push to `main`.** The API can't write config files, so
+HA pulls them instead: CI asks HA to run `scripts/pull_packages.py` (through
+the shell commands in `deploy.yaml`), which installs `packages/` from that
+commit on GitHub. CI then runs HA's config check, rolls back if it fails, and
+reloads, or restarts when a change can't be reloaded (a new `sensor:`
+platform, `shell_command:`). No SSH is reachable from GitHub. Pushing to
+`main` therefore changes HA's config, and can run commands on it, so keep 2FA
+on the GitHub account.
 
-```sh
-HA_SSH_HOST=homeassistant.local scripts/push-packages.sh
-```
-
-which validates, copies and reloads (`--restart` when a package adds a sensor). `ha.py validate` checks them either way — YAML
-syntax, required automation fields, and the filename rule that
-`!include_dir_named` imposes. See [docs/SETUP.md](docs/SETUP.md) for the
-one-time `configuration.yaml` entry.
+`ha.py validate` checks packages before any of that: YAML syntax, required
+automation fields, and the filename rule that `!include_dir_named` imposes.
+See [docs/SETUP.md](docs/SETUP.md#automatic-deploys) for the one-time setup.
 
 ## Custom Cards
 
