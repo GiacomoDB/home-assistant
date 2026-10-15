@@ -1,412 +1,54 @@
 # Home Assistant
 
-Source of truth for my Home Assistant setup: dashboards, packages, custom
-cards and blueprints. Everything is validated on every pull request, and
-dashboards and packages are deployed to Home Assistant by GitHub Actions on
-every push to `main`.
+Source of truth for my Home Assistant setup: dashboards, packages (automations
+and their helper entities), custom cards and blueprints. Edit here, not in the
+HA UI: a deploy overwrites what's live.
+
+**On every push to `main`**, GitHub Actions validates everything, then:
+
+1. **Packages**: HA pulls `packages/` at that commit from GitHub, runs its
+   config check (rolling back if it fails), and reloads, or restarts when a
+   change needs it. No SSH is reachable from outside.
+2. **Dashboards**: written to HA over the WebSocket API.
+
+Pull requests only get validated. Pushing to `main` changes HA's config and
+can run commands on it, so keep 2FA on the GitHub account.
+
+## Docs
+
+| | |
+|---|---|
+| [SETUP.md](docs/SETUP.md) | First run, credentials, GitHub secrets, the Cloudflare tunnel, how deploys work, every command |
+| [DASHBOARDS.md](docs/DASHBOARDS.md) | What each view shows, layout notes, themes |
+| [PACKAGES.md](docs/PACKAGES.md) | What each package does: alerts, heating, appliance stats |
+| [CARDS.md](docs/CARDS.md) | The custom cards, and the CSS rule they all follow |
+| [BLUEPRINTS.md](docs/BLUEPRINTS.md) | IKEA BILRESA scroll-wheel blueprints, with import buttons |
+| [ENTITIES.md](docs/ENTITIES.md) | Every entity ID the repo depends on |
+
+## Layout
 
 ```
-dashboards/          dashboard configs + the manifest that maps them to HA
-packages/            automations + their helper entities — HA pulls them on deploy
-automations/_pulled/ read-only snapshots of the automations still owned by the
-                     HA UI; move one into packages/ to take it under version control
-themes/              theme files — copied to HA by hand, not deployable
-scripts/ha.py        deploy / entity-lookup / validate CLI
+dashboards/           home.yaml + the manifest mapping it to HA; _pulled/ = snapshots
+packages/             one package per feature; HA pulls these on deploy
+automations/_pulled/  read-only snapshots of automations still owned by the HA UI
+*-card.yaml, *.js     custom cards, !included by the dashboard
+ikea-billresa-*.yaml  blueprints
+themes/               theme files, copied to HA by hand (currently unused)
+scripts/ha.py         validate / deploy / entity lookup CLI
 scripts/pull_packages.py  runs INSIDE HA: installs packages/ at a commit on main
-scripts/push-packages.sh  one-time bootstrap / manual fallback, over SSH on the LAN
-docs/SETUP.md        credentials, GitHub secrets, reverse-proxy notes
-docs/ENTITIES.md     every entity ID this repo depends on
-.github/workflows/   the deploy pipeline
+scripts/push-packages.sh  one-time bootstrap and manual fallback, over SSH on the LAN
+.github/workflows/    the deploy pipeline
 ```
 
-**Start here:** [docs/SETUP.md](docs/SETUP.md).
-
-## Dashboards
-
-### Home
-
-`dashboards/home.yaml` — phone-first, six views, deployed over the dashboard
-at `dashboard-general`.
-
-**Home** — the at-a-glance view:
-
-- **Clock** — the built-in `clock` card at the top, no HACS dependency.
-- **Attention** — `attention-card.yaml`: water leaks, sensors that have stopped
-  reporting, low batteries. Renders nothing at all when everything is fine.
-- **Climate** — all six rooms (Living Room, Kitchen, Bedroom, Babyroom, Bath,
-  Hall) as a 3-across grid via `climate-table-card.yaml`, with an outdoor
-  temperature strip on top. 24-hour statistics graphs below.
-- **Cat Fountain** — just the water level, via
-  `petlibro-water-level-card.yaml`.
-- **Energy** — today's cost, usage and unit rate from the Hildebrand Glow (DCC)
-  smart meter feed via `energy-card.yaml`, plus 30 days of daily cost.
-- **Air Quality** — CO₂ and PM2.5 line graphs from the Alpstuga monitor.
-
-**Fountain** — the detail: the `html-template-card` stat card, the `apexcharts`
-today-vs-yesterday chart, and 30-day daily-total bar charts for water drunk and
-drinking sessions. Below that, **Litter Box**: today's visit count, when the box
-was last used, a 24-hour timeline from the occupancy sensor by the box, and 30
-days of daily visits. The counts need `packages/litter_box.yaml` installed.
-
-**AdGuard** — the DNS side of the house: query and block counts from
-`adguard-card.yaml`, 24-hour trends, and a tile for every switch the AdGuard
-integration exposes. AdGuard Home runs as the `a0d7b954_adguard` add-on and is
-the LAN's DNS server, so what it blocks is blocked for every device.
-
-**Heating** — the controls for `packages/heating.yaml`: a status line (what is
-in charge and until when), the target, a slider that holds a temperature until
-the next schedule block, Boost / Cancel boost / Resume schedule tiles, 24 hours
-of target vs bedroom vs what was sent to tado, and the details (bias,
-setback, the Live switch).
-
-**Appliances** — stats for the SmartThings washer, dryer and robot vacuum, no
-controls: a status line each, washes/dries/vacuum runs and kWh this month, the
-last cycle's length and energy, a 48-hour timeline of wash and dry phases,
-cycles per week, energy per day and per month.
-
-**Buttons** — the light and switch buttons.
-
-Side margins come from [`card-mod`](https://github.com/thomasloven/lovelace-card-mod):
-each view's `vertical-stack` is wrapped in a `custom:mod-card`, whose `ha-card`
-is padded 12px. Panel views render edge-to-edge and `grid_options` does nothing
-outside a sections view, so this is the available lever. It has to be the
-wrapper rather than `card_mod` on the stack itself — card-mod has no handling
-for stack or view elements, so styling them directly does nothing.
-
-The five custom cards are pulled in with `!include` from the maintained copies
-at the repo root, so the standalone versions and the dashboard can't drift
-apart. That means this dashboard needs `html-template-card` and
-`apexcharts-card` from HACS.
-
-This dashboard was merged from two older ones. `dashboard-giacomo`, which
-renders the Kindle Dashboard, is deliberately left out of the manifest and is
-never written to. Pre-merge snapshots of everything live in
-`dashboards/_pulled/`.
-
-### Themes
-
-Column widths and section gaps in a sections view are **theme variables**, not
-dashboard config — Home Assistant caps each column at 500px by default, and
-that cannot be changed from the YAML this repo deploys.
-
-`dashboards/home.yaml` sidesteps this by using `type: panel` views, which
-render a single card edge-to-edge at full width with no theme and no HACS
-dependency — so this file is currently **unused**.
-
-It's kept as the alternative: `themes/wide-sections.yaml` widens the sections
-column to 760px and tightens the gutters, for if the dashboard ever moves back
-to sections views. It has to be copied into your HA config by hand (install
-steps are in the file); the WebSocket API used by `scripts/ha.py` writes
-dashboards only, not config files. Once installed, a view opts in with
-`theme: wide_sections`.
-
-### Deploying
-
-One-time setup:
-
-```sh
-python3 -m venv venv
-./venv/bin/pip install -r scripts/requirements.txt
-```
-
-Then, per shell:
-
-```sh
-export HA_URL=https://ha.example.com
-export HA_TOKEN=...
-```
+## Everyday commands
 
 | Command | Does |
 |---|---|
-| `python3 scripts/ha.py validate` | Parse the YAML offline; no credentials needed |
-| `python3 scripts/ha.py dashboards` | List what's in HA and which ones this repo owns |
-| `python3 scripts/ha.py pull` | Snapshot live configs to `dashboards/_pulled/` |
-| `python3 scripts/ha.py pull-automations` | Snapshot UI automations to `automations/_pulled/` |
-| `python3 scripts/ha.py stats` | Which entities have long-term statistics, and which `stat_types` work |
-| `python3 scripts/ha.py entities fountain` | Look up entity IDs |
-| `python3 scripts/ha.py deploy --dry-run` | Check entities without writing |
-| `python3 scripts/ha.py deploy` | Push dashboards for real |
-| `python3 scripts/ha.py deploy-packages --sha <sha>` | Have HA pull `packages/` at a commit on main, check, reload or restart (what CI runs) |
-| `python3 scripts/ha.py reload` | Reload YAML after editing packages (`--restart` for a full restart) |
-| `HA_SSH_HOST=… scripts/push-packages.sh` | Bootstrap / fallback: copy `packages/` over SSH on the LAN, reload |
-
-`scripts/ha.py` re-runs itself under `venv/` automatically, so plain `python3`
-is correct regardless of what's on your `PATH`.
-
-Only dashboards listed in `dashboards/dashboards.yaml` are deployed; everything
-else in your instance is left alone. See
-[docs/SETUP.md §0](docs/SETUP.md) for keeping or merging existing dashboards.
-
-In CI, `.github/workflows/deploy.yml` runs `deploy-packages` and then
-`deploy` with `HA_URL` and `HA_TOKEN` repository secrets. Deploys overwrite the live dashboard, so edit the YAML here rather than
-in the HA UI. A local `deploy` sends the working tree, uncommitted edits
-included; CI sends only what is committed — see
-[docs/SETUP.md §3](docs/SETUP.md#3-working-locally).
-
-## Automations
-
-`packages/` holds one HA [package](https://www.home-assistant.io/docs/configuration/packages/)
-per feature — the automation plus any helper entity it needs, kept together in a
-single file so neither can be installed without the other.
-
-| Package | Does |
-|---|---|
-| `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average, notifying on a 35%+ deviation in either direction. A sustained change in a cat's water intake is worth catching early, and it is not something you notice by glancing at a chart. |
-| `bath_humidity.yaml` | Notifies when the bathroom stays above 70% humidity for two hours *and* sits 10+ points above the hall — sustained damp rather than the harmless spike after a shower. |
-| `litter_box.yaml` | No automation. A template sensor that gives the litter box occupancy sensor a 5-minute cooldown, so a cat holding still mid-visit doesn't count twice, and a `history_stats` sensor counting today's visits from it, because the occupancy sensor alone has no statistics to chart. |
-| `heating.yaml` | HA owns the heating schedule and drives tado **locally over HomeKit**: tado's cloud API allows 100 calls a day without Auto-Assist, too few to schedule through. Every target is the bedroom's, measured by its own sensor at all hours, and tado is sent `target + (tado reading − bedroom reading)`. Controlled from the dashboard's **Heating** view: a slider holds a temperature until the next block, plus Boost / Cancel / Resume buttons. Changes from the tado dial or app pause it until the next block. It starts in shadow mode. Needs the HomeKit thermostat renamed to `climate.heating` — see the file header. Alerts if the thermostat is unreachable, ignores HA, or the bedroom stays 2° short. |
-| `appliances.yaml` | No automation. The numbers behind the **Appliances** view: a status line per SmartThings device, cycle counters for the washer, dryer and vacuum (with long-term statistics, so they chart per week and month; SmartThings has no counter of its own), and the last wash's and dry's length and energy. |
-| `deploy.yaml` | Two shell commands, `pull_packages` and `rollback_packages`, that CI calls to deploy this folder. Not an automation; see above. |
-| `water_leak.yaml` | High-priority repeating alarm while any `device_class: moisture` sensor is wet, with an all-clear when it dries. The only alert here where minutes matter, so it is deliberately louder than the rest. |
-
-The four alerts push to `notify.mobile_app_pixel_8_pro` and also raise a persistent
-notification, so an alert survives an undelivered push. `notify_target` at the
-top of each automation's variables is the single place to change that.
-
-**Deployed on every push to `main`.** The API can't write config files, so
-HA pulls them instead: CI asks HA to run `scripts/pull_packages.py` (through
-the shell commands in `deploy.yaml`), which installs `packages/` from that
-commit on GitHub. CI then runs HA's config check, rolls back if it fails, and
-reloads, or restarts when a change can't be reloaded (a new `sensor:`
-platform, `shell_command:`). No SSH is reachable from GitHub. Pushing to
-`main` therefore changes HA's config, and can run commands on it, so keep 2FA
-on the GitHub account.
-
-`ha.py validate` checks packages before any of that: YAML syntax, required
-automation fields, and the filename rule that `!include_dir_named` imposes.
-See [docs/SETUP.md](docs/SETUP.md#automatic-deploys) for the one-time setup.
-
-## Custom Cards
-
-### A note on CSS in `html-template-card`
-
-Always scope `ha-card` rules as `ha-card:has(.your-root-class)`. Never write a
-bare `ha-card { ... }`.
-
-`hui-card` opts out of shadow DOM (`createRenderRoot()` returns `this`), so
-every card in a stack renders into the *stack's* shadow tree. `html-template-card`
-has no shadow root either, which puts its `<style>` **and** its `<ha-card>` in
-that shared tree — so a bare `ha-card` rule reaches every sibling card that also
-lacks a shadow root, meaning every other `html-template-card` on the view. Cards
-written as ordinary LitElements keep their `ha-card` inside their own shadow root
-and are unaffected, which is what makes this easy to ship without noticing: it
-looks fine until two of these cards share a view.
-
-A `display: none` written that way blanks the neighbouring cards outright, which
-is precisely how the battery card's empty state once hid the climate table.
-
-`python scripts/ha.py validate` fails on an unscoped selector, so CI catches it
-before a deploy does.
-
-
-### E-ink Sensor Card
-
-A minimal sensor card designed for e-ink displays. Shows sensor value with one decimal place, unit, and optional label.
-
-**Features:**
-- Clean black text on white background
-- Configurable font sizes for value, unit, and label
-- Automatic rounding to one decimal place
-- Grid layout options
-
-**Installation:**
-1. Copy `eink-sensor-card.js` to your `www` folder
-2. Add as a resource in your dashboard
-
-**Example configuration:**
-```yaml
-type: custom:eink-sensor-card
-entity: sensor.temperature
-name: Living Room
-unit: °C
-value_font_size: 120
-unit_font_size: 40
-label_font_size: 32
-```
-
-### Climate Table Card
-
-Room-by-room temperature and humidity as a compact table with column headers,
-aligned columns and row dividers.
-
-Replaces a stack of `heading` cards carrying entity badges, where the room name
-and its readings sat at opposite edges of the card with a wide gap between
-them, and nothing labelled which number was which measurement.
-
-**Requires:** the `html-template-card` custom card (installable via HACS).
-
-Rooms are a list at the top of the template — one entry per room, as
-`[label, temperature entity, humidity entity]` — so adding or reordering rooms
-is a one-line edit. Sensors that are unavailable render as `—` rather than 0.
-
-It also carries an **outdoor temperature strip** above the grid, which supplies
-the context the indoor numbers lack. There is no outdoor sensor in this
-instance, so the reading comes from the weather integration — discovered as the
-first entity in the `weather` domain rather than hardcoded, since that id
-depends on how the integration was named at setup. With no weather integration,
-or none reporting a temperature, the strip omits itself.
-
-**Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#climate).
-
-### Attention Card
-
-`attention-card.yaml` — water leaks, sensors that have stopped reporting, and
-low batteries. Renders nothing whatsoever when everything is fine.
-
-**Requires:** the `html-template-card` custom card (installable via HACS).
-
-One card rather than three, because these share a job: be impossible to miss
-when they matter and take up no room at all the rest of the time. Groups are
-ordered by how fast you need to act — a leak is measured in floorboards, a low
-battery in days.
-
-The **Not reporting** group exists because a sensor that has stopped reporting is
-not "fine", but the climate grid renders it identically to a healthy one. The
-IKEA Thread sensors here drop often enough to warrant an automation pressing
-`identify` on five of them every two hours, so a dropped sensor is a routine
-event worth surfacing rather than an exotic one.
-
-Nothing is a hardcoded entity list: leaks are found by `device_class: moisture`
-and batteries by `device_class: battery`, so a newly paired device is covered
-immediately — a fixed list would silently stop covering new devices, which is
-the exact failure this card exists to catch. The tradeoff is that iterating
-`states` subscribes the template to all state changes, which is why this pattern
-is used once here rather than in several cards.
-
-Batteries handle both flavours: `sensor` (a percentage) and `binary_sensor`
-(`on` = low, no number available). Binary ones sort first, then percentages
-ascending; at or below half the threshold the figure turns red.
-
-An `ignore` list next to the threshold excludes mains-powered devices that
-expose a battery entity anyway and park it at 0 — the Granary feeder does this.
-Entries match as substrings against the entity_id. The filter is per device
-rather than per value on purpose: hiding everything that reads exactly 0 would
-also hide a genuinely dead battery. See
-[docs/ENTITIES.md](docs/ENTITIES.md#batteries).
-
-### Energy Card
-
-`energy-card.yaml` — today's electricity cost, usage and unit rate from
-Hildebrand Glow (DCC), in the same 3-across grid as the climate card.
-
-**Requires:** the `html-template-card` custom card (installable via HACS).
-
-Units are read from each entity's `unit_of_measurement` rather than hardcoded,
-so the card cannot disagree with the sensor. The rate and standing charge are
-converted to pence when they arrive in GBP below £1 — a rate of `0.2431 GBP/kWh`
-rounds to a meaningless `0.24`, whereas `24.31p/kWh` is how UK tariffs are
-actually quoted. Guarded on both the unit and the magnitude, so a non-GBP unit
-or a genuinely above-£1 rate is left exactly as reported.
-
-The standing charge is a footnote rather than a fourth cell: it is fixed and you
-cannot influence it, but without it the daily cost looks wrong on a low-use day.
-
-**Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#energy--hildebrand-glow-dcc).
-
-### AdGuard Card
-
-`adguard-card.yaml` — DNS queries, how many were blocked and the block rate, in
-the same 3-across grid as the climate and energy cards.
-
-**Requires:** the `html-template-card` custom card (installable via HACS).
-
-Every figure covers AdGuard's own **rolling** statistics window — 24 hours out
-of the box — not "today" and not HA's recorder. The count at 18:00 covers 18:00
-yesterday to now and ages queries out continuously rather than resetting at
-midnight. Change the retention in the AdGuard UI and the "Queries 24h" label
-here is the thing to edit.
-
-Blocked is rendered green: a high number is the system working. The footer
-carries the average response time, and flips to a red warning when protection
-or filtering is switched off — the one state where the counts above are
-misleading, since they keep showing yesterday's blocks while nothing is being
-filtered now.
-
-None of the AdGuard sensors carry a `state_class`, so they record no long-term
-statistics and `statistics-graph` renders empty against them. The trend cards on
-that view use `history-graph` and `sensor` instead, which read recorder history
-and so reach back only as far as `purge_keep_days`. `python3 scripts/ha.py
-stats` reports these entities as NO STATS, which is expected.
-
-**Sensors used:** see [docs/ENTITIES.md](docs/ENTITIES.md#adguard-home).
-
-### Petlibro Fountain Card
-
-A styled card for a Petlibro / Dockstream smart water fountain. Shows remaining water, today's consumption and drinking stats, and a comparison against **the same time yesterday** (yesterday's totals prorated to the fraction of the day elapsed so far), so the comparison reflects pace rather than partial-day vs. full-day.
-
-**Requires:** the [`html-template-card`](https://github.com/PiotrMachowski/Home-Assistant-Lovelace-HTML-Jinja2-Template-card) custom card (installable via HACS).
-
-**Installation:**
-1. Add the card to a dashboard (Edit dashboard → Add card → Manual).
-2. Paste the contents of `petlibro-fountain-card.yaml`.
-3. Adjust the `sensor.dockstream_smart_fountain_*` entity IDs to match your device.
-
-**Sensors used:**
-- `sensor.dockstream_smart_fountain_remaining_water_2`
-- `sensor.dockstream_smart_fountain_today_s_water_consumption`
-- `sensor.dockstream_smart_fountain_today_s_average_drinking_time`
-- `sensor.dockstream_smart_fountain_today_s_total_drinking_time`
-- `sensor.dockstream_smart_fountain_today_s_total_drinking_times`
-- `sensor.dockstream_smart_fountain_yesterday_s_water_consumption`
-- `sensor.dockstream_smart_fountain_yesterday_s_total_drinking_times`
-
-Ex:   
-<img width="298" height="526" alt="Screenshot 2026-08-02 at 17 26 07" src="https://github.com/user-attachments/assets/6c9f8f80-aa3c-4d50-96a6-2b314042a540" />
-
-### Petlibro Water Level Card
-
-A deliberately minimal companion to the card above: the percentage, a status
-word (Good / Top up soon / Refill now) and a colour-coded bar. Intended for an
-overview dashboard where the full stat card would be too much.
-
-**Requires:** the `html-template-card` custom card (installable via HACS).
-
-Thresholds match `petlibro-fountain-card.yaml` — above 50 % blue, above 25 %
-amber, below that red. Keep the two in sync if you change one.
-
-**Sensors used:**
-- `sensor.dockstream_smart_fountain_remaining_water_2`
-
-### Petlibro Fountain Chart Card
-
-A line chart comparing today's cumulative water consumption against yesterday's, overlaid on the same time-of-day axis. Pairs with the stat card above.
-
-`html-template-card` renders plain Jinja and has no access to sensor history, so the chart can't live inside that card — it's a separate card driven by [`apexcharts-card`](https://github.com/RomRider/apexcharts-card), which queries the recorder directly and has a built-in `offset` feature for exactly this "same time yesterday" overlay.
-
-**Requires:** the `apexcharts-card` custom card (installable via HACS).
-
-Configured with `grid_options: columns: full` so it spans the full width of a **Sections**-view dashboard; if your dashboard uses the classic Masonry layout instead, remove `grid_options` and use `card-mod` to span columns (Masonry has no native per-card width).
-
-**Installation:**
-1. Add the card to a dashboard (Edit dashboard → Add card → Manual).
-2. Paste the contents of `petlibro-fountain-chart-card.yaml`.
-3. Adjust the entity ID if your sensor name differs.
-4. To show it together with the stat card, put both cards in a `vertical-stack` (Edit dashboard → Add card → Stack → Vertical stack → add both cards).
-
-**Sensors used:**
-- `sensor.dockstream_smart_fountain_today_s_water_consumption` (plotted twice: once as-is for "Today", once with `offset: -1d` for "Yesterday")
-
-## Blueprints
-
-### Scroll Wheel – Light Brightness Control
-
-Controls light brightness with clockwise/counter-clockwise rotation.
-
-<a href="https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FGiacomoDB%2Fhome-assistant%2Fblob%2Fmain%2Fikea-billresa-scrollwheel.yaml" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/blueprint_import.svg" alt="Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled." /></a>
-
-### Scroll Wheel – Thermostat Control
-
-Controls Tado thermostat temperature with clockwise/counter-clockwise rotation.
-
-<a href="https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FGiacomoDB%2Fhome-assistant%2Fblob%2Fmain%2Fikea-billresa-thermostat.yaml" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/blueprint_import.svg" alt="Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled." /></a>
-
-### Center Button – Tado Thermostat Boost (Once Per Day)
-
-Boosts the heating from the center button, limited to one boost per day. It
-starts `timer.heating_boost` (15 min by default) from `packages/heating.yaml`,
-and the heating controller sends 25 °C to tado over HomeKit while it runs. No
-cloud call, so no tado API quota.
-
-**Prerequisites:** `packages/heating.yaml` installed; an `input_boolean` helper to track daily usage, and a separate automation to reset it at midnight. Automations made from the old version (two thermostat inputs) need re-saving with the new inputs.
-
-<a href="https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FGiacomoDB%2Fhome-assistant%2Fblob%2Fmain%2Fikea-billresa-thermostat-boost.yaml" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/blueprint_import.svg" alt="Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled." /></a>
+| `python3 scripts/ha.py validate` | Offline check of all YAML; what CI runs on every PR |
+| `python3 scripts/ha.py entities fountain` | Find entity IDs |
+| `python3 scripts/ha.py deploy --dry-run` | Check the dashboard's entities exist in HA |
+| `python3 scripts/ha.py stats` | Which entities can feed statistics charts |
+
+The network commands need `HA_URL` and `HA_TOKEN` exported, and a venv the
+first time; see [SETUP.md §3](docs/SETUP.md#3-working-locally) for that and
+the full list.

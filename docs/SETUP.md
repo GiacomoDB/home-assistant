@@ -1,8 +1,8 @@
 # Setup
 
-Everything in this repo is the source of truth for a Home Assistant install.
-Dashboards live in `dashboards/`, get validated on every pull request, and get
-pushed to Home Assistant by GitHub Actions on every merge to `main`.
+How to set this repo up against a Home Assistant install, and how deploys
+work. Dashboards (`dashboards/`) and packages (`packages/`) are validated on
+every pull request and deployed by GitHub Actions on every push to `main`.
 
 > **Deploys overwrite.** `scripts/ha.py deploy` replaces the live dashboard
 > config wholesale. Edits made in the HA UI survive until the next deploy, then
@@ -200,7 +200,8 @@ string, so Validate passes and only the Deploy step fails, with
 through CI before that date.
 
 Then trigger a no-op run to confirm the wiring:
-Actions → **Deploy dashboards** → Run workflow → tick **dry_run**.
+Actions → **Deploy** → Run workflow → tick **dry_run** (checks the
+dashboards' entities and skips packages).
 
 ---
 
@@ -244,7 +245,12 @@ Then:
 | `python3 scripts/ha.py entities 'sensor.*temperature*'` | Find entity IDs by glob |
 | `python3 scripts/ha.py entities fountain` | Find entity IDs by friendly name |
 | `python3 scripts/ha.py deploy --dry-run` | Connect and check entities, don't write |
-| `python3 scripts/ha.py deploy` | Push for real |
+| `python3 scripts/ha.py deploy` | Push the dashboards for real |
+| `python3 scripts/ha.py stats` | Which dashboard entities have long-term statistics, and which `stat_types` work |
+| `python3 scripts/ha.py pull-automations` | Snapshot UI automations into `automations/_pulled/` |
+| `python3 scripts/ha.py deploy-packages --sha <sha>` | Have HA pull `packages/` at a commit on main, check, reload or restart (what CI runs) |
+| `python3 scripts/ha.py reload` | Reload YAML in HA (`--restart` for a full restart) |
+| `HA_SSH_HOST=… scripts/push-packages.sh` | Copy `packages/` over SSH on the LAN: the bootstrap and the fallback (see *Packages*) |
 
 `deploy` warns about entity IDs that don't exist in your instance. Pass
 `--strict` to turn those warnings into a non-zero exit — useful if you'd rather
@@ -388,24 +394,5 @@ python scripts/ha.py entities 'cat water'
 
 ### What is in them
 
-| Package | Does |
-|---|---|
-| `cat_water_anomaly.yaml` | Compares yesterday's fountain intake against a trailing 7-day average and notifies when it deviates by 35% or more. Ships the statistics sensor it depends on. |
-| `bath_humidity.yaml` | Notifies when bathroom humidity stays above 70% for two hours *and* sits 10+ points above the hall, the condition mould needs. |
-| `water_leak.yaml` | Repeating high-priority alarm every 5 minutes while any moisture sensor is wet, capped at an hour, with an all-clear when it dries. |
-
-### Notifications
-
-All three are pinned to `notify.mobile_app_pixel_8_pro`, matching the convention
-already used by the "Acqua gatto notifica" automation. `notify_target` at the top
-of each automation's `variables:` block is the single place to change it; find
-other services with:
-
-```sh
-python scripts/ha.py entities 'notify.*'
-```
-
-Each carries a `tag`, so a repeat replaces the previous notification rather than
-stacking, and a `channel` so Android can be tuned per alert type. Each also
-raises a persistent notification behind `continue_on_error: true`, so an alert
-is never lost to an undelivered push.
+See [PACKAGES.md](PACKAGES.md): what each package does, and where its
+notifications go.
