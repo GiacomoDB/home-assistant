@@ -43,7 +43,8 @@ HomeKit thermostat renamed to `climate.heating`; see the file header.
 - **`appliances.yaml`**: the numbers behind the **Appliances** view. A status
   line per SmartThings device, cycle counters for the washer, dryer and vacuum
   (with long-term statistics, so they chart per week and month; SmartThings
-  has no counter of its own), and the last wash's and dry's length and energy.
+  has no counter of its own), the last wash's and dry's length and energy, and
+  when each machine last finished and the vacuum last ran.
 - **`litter_box.yaml`**: gives the litter box occupancy sensor a 5-minute
   cooldown, so a cat holding still mid-visit doesn't count twice, and counts
   today's visits with `history_stats`, since the occupancy sensor alone has no

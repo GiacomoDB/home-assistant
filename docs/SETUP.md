@@ -251,6 +251,7 @@ Then:
 | `python3 scripts/ha.py deploy-packages --sha <sha>` | Have HA pull `packages/` at a commit on main, check, reload or restart (what CI runs) |
 | `python3 scripts/ha.py reload` | Reload YAML in HA (`--restart` for a full restart) |
 | `HA_SSH_HOST=… scripts/push-packages.sh` | Copy `packages/` over SSH on the LAN: the bootstrap and the fallback (see *Packages*) |
+| `node scripts/screenshot.mjs` | Screenshot every view at phone width into `screenshots/` (one-time setup in the script's header) |
 
 `deploy` warns about entity IDs that don't exist in your instance. Pass
 `--strict` to turn those warnings into a non-zero exit — useful if you'd rather

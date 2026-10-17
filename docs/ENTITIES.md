@@ -64,8 +64,8 @@ Only the temperature halves for Bath and Hall appeared on the old dashboards;
 their humidity counterparts were inferred from the Timmerflotte's combined
 temp/humidity pairing and then confirmed to exist.
 
-There is **no outdoor temperature sensor** in this instance — the dashboard's
-badge row uses Living Room temperature, fountain level and CO₂ instead.
+There is **no outdoor temperature sensor** in this instance; the climate
+card's outdoor strip comes from the weather integration (below).
 
 ### Outdoor temperature — from the weather integration
 
@@ -162,9 +162,11 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | `script.heating_resume` | `packages/heating.yaml` | Ends a hold or a pause now |
 | `sensor.washing_machine_status`, `sensor.tumble_dryer_status`, `sensor.robot_vacuum_status` | `packages/appliances.yaml` | One line per device for the Appliances view, e.g. "Rinsing · done at 15:27", "Docked, charging · 100%" |
 | `sensor.washing_machine_cycles`, `sensor.tumble_dryer_cycles` | `packages/appliances.yaml` | Completed cycles (job state reached finish), total_increasing for weekly/monthly charts. Counted from the day the package was installed |
-| `sensor.robot_vacuum_runs` | `packages/appliances.yaml` | Cleaning runs started, total_increasing |
-| `sensor.washing_machine_last_cycle`, `sensor.tumble_dryer_last_cycle` | `packages/appliances.yaml` | Minutes from start (run from stop) to finish of the last cycle |
+| `sensor.robot_vacuum_runs` | `packages/appliances.yaml` | Cleaning runs started, total_increasing. Attribute `last_run`: when the last one started |
+| `sensor.washing_machine_last_cycle`, `sensor.tumble_dryer_last_cycle` | `packages/appliances.yaml` | Minutes from start (run from stop) to finish of the last cycle; unknown if the start was missed. Attribute `finished`: when it finished |
 | `sensor.washing_machine_last_cycle_energy`, `sensor.tumble_dryer_last_cycle_energy` | `packages/appliances.yaml` | Energy of the last cycle, from the lifetime counter, taken 30 min after the stop. 0.1 kWh steps, so approximate |
+| `sensor.washing_machine_last_cycle_summary`, `sensor.tumble_dryer_last_cycle_summary` | `packages/appliances.yaml` | The last cycle in one line for the dashboard, e.g. "83 min · 0.4 kWh · 2 days ago" |
+| `sensor.robot_vacuum_last_run` | `packages/appliances.yaml` | "3 hours ago", or "No run yet" |
 
 It reads empty for roughly the first week, and the automation stays deliberately
 silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an
@@ -236,18 +238,22 @@ this account.
 
 | Entity ID | Unit | Meaning |
 |---|---|---|
-| `sensor.electricity_meter_cost_today` | GBP | Cost so far today, resets at midnight |
+| `sensor.electricity_meter_cost_today` | GBP | Cost so far today, resets at midnight. Don't chart its statistics (see below) |
 | `sensor.electricity_meter_usage_today` | kWh | Usage so far today, resets at midnight |
-| `sensor.dcc_sourced_smart_electricity_meter_rate` | GBP/kWh | Unit rate |
-| `sensor.dcc_sourced_smart_electricity_meter_standing_charge` | GBP | Fixed daily charge |
+| `sensor.dcc_sourced_smart_electricity_meter_rate` | GBP/kWh | Unit rate. **Disabled by default** by the integration: enable it in Settings → Entities, or the energy card shows "—" |
+| `sensor.dcc_sourced_smart_electricity_meter_standing_charge` | GBP | Fixed daily charge. Disabled by default, like the rate |
 
-Two things to know about this data:
+Three things to know about this data:
 
 - **It lags by roughly half an hour.** DCC delivers in batches, so nothing here
   reacts to an appliance switching on, and no automation built on it can.
 - **The rate and standing charge arrive in GBP, not pence.** A typical rate is
   `0.2431`, which rounds to a meaningless `0.24`. `energy-card.yaml` converts
   anything under £1 in a GBP unit to pence, matching how UK tariffs are quoted.
+- **The cost's statistics are wrong per day.** It is `state_class: total` with
+  no `last_reset`, so HA reads the midnight reset as money going down: daily
+  `change` comes out negative (down to −£1.92 in October 2026). Usage is
+  `total_increasing`, whose resets HA handles, so charts use usage instead.
 
 There is also `switch.hildebrand_glow_dcc_pre_release` and
 `update.hildebrand_glow_dcc_update`; neither is used by the dashboard.

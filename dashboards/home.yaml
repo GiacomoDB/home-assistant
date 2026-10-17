@@ -32,22 +32,8 @@ views:
     path: home
     icon: mdi:circle
     type: panel
-    badges:
-      - type: entity
-        entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
-        name: Living Room
-        icon: mdi:circle
-        color: red
-      - type: entity
-        entity: sensor.dockstream_smart_fountain_remaining_water_2
-        name: Fountain
-        icon: mdi:circle
-        color: cyan
-      - type: entity
-        entity: sensor.alpstuga_air_quality_monitor_carbon_dioxide
-        name: CO₂
-        icon: mdi:circle
-        color: green
+    # No badges: a panel view doesn't render them. Three were defined here
+    # and never showed (checked by screenshot, 2026-10-17).
     cards:
       # mod-card wraps the stack in an ha-card we can pad, which insets every
       # card inside it. Needed because panel views render edge-to-edge, and
@@ -159,16 +145,13 @@ views:
             # Hildebrand Glow (DCC), electricity only. Today's figures in the
             # card, then 30 days of daily totals.
             #
-            # Same stat_types question as the fountain charts: HA stores
-            # min/max/mean for `state_class: measurement` and sum/state/change
-            # for total_increasing, never both, and asking for the wrong one
-            # renders an EMPTY chart with no error. Both are listed so whichever
-            # applies resolves; they are mutually exclusive, so no double bars.
-            # `python3 scripts/ha.py stats` prints which applies.
-            #
-            # Cost rather than usage: at a single unit rate the two curves are
-            # the same shape, and cost is the one that means anything. Swap the
-            # entity for sensor.electricity_meter_usage_today for kWh.
+            # Usage, not cost. The cost sensor is `state_class: total` with no
+            # last_reset, so HA reads its midnight reset as money going down:
+            # daily `change` came out negative (down to -£1.92), and its daily
+            # `state` doesn't line up with the day either, since the DCC feed
+            # arrives hours late. Usage is total_increasing, whose resets HA
+            # handles, so its daily `change` is the day's kWh. At one unit rate
+            # the shape is the same as cost.
             - type: heading
               heading: Energy
               heading_style: title
@@ -179,11 +162,10 @@ views:
               period: day
               chart_type: bar
               stat_types:
-                - max
                 - change
               entities:
-                - entity: sensor.electricity_meter_cost_today
-                  name: Cost per day
+                - entity: sensor.electricity_meter_usage_today
+                  name: Usage per day
 
             # ────────────────────────── AIR QUALITY ───────────────────────
             # Carried over from dashboard-general.
@@ -505,8 +487,12 @@ views:
                 - entity: sensor.heating_reference_temperature
                   name: Bedroom now
                 - entity: input_number.heating_manual_target
-                  name: Set until next block
+                  # Short: the slider takes most of the row. The status line
+                  # above says how long the hold lasts.
+                  name: Hold
 
+            # Stacked tiles (icon above name): side by side, three tiles at
+            # phone width cut every name off.
             - type: grid
               columns: 3
               square: false
@@ -514,6 +500,7 @@ views:
                 - type: tile
                   entity: timer.heating_boost
                   name: Boost 15 min
+                  vertical: true
                   icon: mdi:circle
                   tap_action: &boost
                     action: perform-action
@@ -525,6 +512,7 @@ views:
                   entity: timer.heating_boost
                   name: Cancel boost
                   icon: mdi:circle
+                  vertical: true
                   hide_state: true
                   tap_action: &cancel
                     action: perform-action
@@ -534,8 +522,9 @@ views:
                   icon_tap_action: *cancel
                 - type: tile
                   entity: script.heating_resume
-                  name: Resume schedule
+                  name: Resume
                   icon: mdi:circle
+                  vertical: true
                   hide_state: true
                   tap_action: &resume
                     action: perform-action
@@ -616,14 +605,18 @@ views:
               heading: Laundry
               heading_style: title
               icon: mdi:circle
-            # Calendar month to date, from statistics.
+            # Calendar month to date, from statistics. "This month" is the
+            # subheading, since half-width cards cut it off in the names.
+            - type: heading
+              heading: This month
+              heading_style: subtitle
             - type: grid
               columns: 2
               square: false
               cards:
                 - type: statistic
                   entity: sensor.washing_machine_cycles
-                  name: Washes this month
+                  name: Washes
                   icon: mdi:circle
                   period: &this_month
                     calendar:
@@ -631,46 +624,30 @@ views:
                   stat_type: change
                 - type: statistic
                   entity: sensor.tumble_dryer_cycles
-                  name: Dries this month
+                  name: Dries
                   icon: mdi:circle
                   period: *this_month
                   stat_type: change
                 - type: statistic
                   entity: sensor.washing_machine_energy
-                  name: Washer this month
+                  name: Washer energy
                   icon: mdi:circle
                   period: *this_month
                   stat_type: change
                 - type: statistic
                   entity: sensor.tumble_dryer_energy
-                  name: Dryer this month
+                  name: Dryer energy
                   icon: mdi:circle
                   period: *this_month
                   stat_type: change
-            # last_changed is when the last cycle finished (the length) or was
-            # measured (the energy, 30 minutes after the machine stopped).
-            - type: grid
-              columns: 2
-              square: false
-              cards:
-                - type: tile
-                  entity: sensor.washing_machine_last_cycle
+            # One full-width row each: length, energy and when it finished
+            # (packages/appliances.yaml, LAST CYCLE).
+            - type: entities
+              entities:
+                - entity: sensor.washing_machine_last_cycle_summary
                   name: Last wash
-                  icon: mdi:circle
-                  state_content: [state, last_changed]
-                - type: tile
-                  entity: sensor.tumble_dryer_last_cycle
+                - entity: sensor.tumble_dryer_last_cycle_summary
                   name: Last dry
-                  icon: mdi:circle
-                  state_content: [state, last_changed]
-                - type: tile
-                  entity: sensor.washing_machine_last_cycle_energy
-                  name: Last wash energy
-                  icon: mdi:circle
-                - type: tile
-                  entity: sensor.tumble_dryer_last_cycle_energy
-                  name: Last dry energy
-                  icon: mdi:circle
             # Recorder history, so each phase (wash, rinse, spin...) is its
             # own coloured block on a timeline.
             - type: history-graph
@@ -721,12 +698,12 @@ views:
                   icon: mdi:circle
                   period: *this_month
                   stat_type: change
-                # last_changed of the counter is when the last run started.
+                # When the last run started, or "No run yet". Not the
+                # counter's last_changed, which a reload also moves.
                 - type: tile
-                  entity: sensor.robot_vacuum_runs
+                  entity: sensor.robot_vacuum_last_run
                   name: Last run
                   icon: mdi:circle
-                  state_content: last_changed
             - type: history-graph
               title: Last 7 days
               hours_to_show: 168

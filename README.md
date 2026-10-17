@@ -37,6 +37,7 @@ themes/               theme files, copied to HA by hand (currently unused)
 scripts/ha.py         validate / deploy / entity lookup CLI
 scripts/pull_packages.py  runs INSIDE HA: installs packages/ at a commit on main
 scripts/push-packages.sh  one-time bootstrap and manual fallback, over SSH on the LAN
+scripts/screenshot.mjs    screenshots of the dashboard views, for checking a deploy
 .github/workflows/    the deploy pipeline
 ```
 
@@ -48,6 +49,7 @@ scripts/push-packages.sh  one-time bootstrap and manual fallback, over SSH on th
 | `python3 scripts/ha.py entities fountain` | Find entity IDs |
 | `python3 scripts/ha.py deploy --dry-run` | Check the dashboard's entities exist in HA |
 | `python3 scripts/ha.py stats` | Which entities can feed statistics charts |
+| `node scripts/screenshot.mjs` | Screenshot every view at phone width |
 
 The network commands need `HA_URL` and `HA_TOKEN` exported, and a venv the
 first time; see [SETUP.md §3](docs/SETUP.md#3-working-locally) for that and

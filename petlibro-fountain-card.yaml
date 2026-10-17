@@ -2,8 +2,9 @@ type: custom:html-template-card
 title: ""
 ignore_line_breaks: true
 content: >
+  {#- Capped: the fountain can report over 100% (118% on 2026-10-17). -#}
   {% set water_pct =
-  states('sensor.dockstream_smart_fountain_remaining_water_2') | float(0) %}
+  [states('sensor.dockstream_smart_fountain_remaining_water_2') | float(0), 100] | min %}
 
   {% set today_consumption =
   states('sensor.dockstream_smart_fountain_today_s_water_consumption') |

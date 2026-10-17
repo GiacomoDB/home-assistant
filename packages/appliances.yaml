@@ -88,13 +88,21 @@ template:
         icon: mdi:circle
         state: >-
           {% set started = this.attributes.get('started') %}
-          {% if finished and started %}
-            {{ ((as_timestamp(now()) - as_timestamp(started)) / 60) | round(0) | int }}
+          {% if finished %}
+            {{ (((as_timestamp(now()) - as_timestamp(started)) / 60) | round(0) | int)
+               if started else none }}
           {% else %}
             {{ this.state if this.state | is_number else none }}
           {% endif %}
         attributes:
-          started: "{{ now().isoformat() if new_cycle else this.attributes.get('started') }}"
+          # Cleared at each finish, so a cycle whose start was missed can't
+          # be timed from an older cycle's start.
+          started: >-
+            {{ now().isoformat() if new_cycle
+               else (none if finished else this.attributes.get('started')) }}
+          # When it finished. The dashboard shows this, not last_changed,
+          # which a reload or a restart also moves.
+          finished: "{{ now().isoformat() if finished else this.attributes.get('finished') }}"
 
       - name: Washing machine last cycle energy
         unique_id: washing_machine_last_cycle_energy
@@ -161,13 +169,21 @@ template:
         icon: mdi:circle
         state: >-
           {% set started = this.attributes.get('started') %}
-          {% if finished and started %}
-            {{ ((as_timestamp(now()) - as_timestamp(started)) / 60) | round(0) | int }}
+          {% if finished %}
+            {{ (((as_timestamp(now()) - as_timestamp(started)) / 60) | round(0) | int)
+               if started else none }}
           {% else %}
             {{ this.state if this.state | is_number else none }}
           {% endif %}
         attributes:
-          started: "{{ now().isoformat() if new_cycle else this.attributes.get('started') }}"
+          # Cleared at each finish, so a cycle whose start was missed can't
+          # be timed from an older cycle's start.
+          started: >-
+            {{ now().isoformat() if new_cycle
+               else (none if finished else this.attributes.get('started')) }}
+          # When it finished. The dashboard shows this, not last_changed,
+          # which a reload or a restart also moves.
+          finished: "{{ now().isoformat() if finished else this.attributes.get('finished') }}"
 
       - name: Tumble dryer last cycle energy
         unique_id: tumble_dryer_last_cycle_energy
@@ -214,6 +230,8 @@ template:
         state_class: total_increasing
         icon: mdi:circle
         state: "{{ this.state | int(0) + (1 if new_run else 0) }}"
+        attributes:
+          last_run: "{{ now().isoformat() if new_run else this.attributes.get('last_run') }}"
 
   # ─────────────────────────────── STATUS ───────────────────────────────
   # One readable line per device for the dashboard. Unknown phases fall back
@@ -283,3 +301,54 @@ template:
             {%- if battery | is_number %} · {{ battery }}%{% endif %}
             {%- if is_state('binary_sensor.robot_vacuum_dust_bag_full', 'on') %} · dust bag full{% endif %}
           {%- endif -%}
+
+  # ───────────────────────────── LAST CYCLE ─────────────────────────────
+  # The last cycle in one line, e.g. "83 min · 0.4 kWh · 2 days ago", so the
+  # dashboard shows it in one row without truncating. The energy appears once
+  # it's measured, 30 minutes after the machine stops. "ago" counts from the
+  # `finished` attribute, not last_changed: a reload or restart moves that,
+  # which is how the vacuum showed a "last run" it never made. These use
+  # now(), so they re-render every minute.
+  - sensor:
+      - name: Washing machine last cycle summary
+        unique_id: washing_machine_last_cycle_summary
+        icon: mdi:circle
+        state: >-
+          {% set d = states('sensor.washing_machine_last_cycle') %}
+          {% set e = states('sensor.washing_machine_last_cycle_energy') %}
+          {% set f = state_attr('sensor.washing_machine_last_cycle', 'finished') %}
+          {% set ns = namespace(parts=[]) %}
+          {% if d | is_number %}{% set ns.parts = ns.parts + [d ~ ' min'] %}{% endif %}
+          {% if d | is_number and e | is_number
+                and not state_attr('sensor.washing_machine_last_cycle_energy', 'open') %}
+            {% set ns.parts = ns.parts + [e ~ ' kWh'] %}
+          {% endif %}
+          {% if as_datetime(f, none) %}
+            {% set ns.parts = ns.parts + [time_since(as_datetime(f)) ~ ' ago'] %}
+          {% endif %}
+          {{ ns.parts | join(' · ') if ns.parts else 'Not recorded yet' }}
+
+      - name: Tumble dryer last cycle summary
+        unique_id: tumble_dryer_last_cycle_summary
+        icon: mdi:circle
+        state: >-
+          {% set d = states('sensor.tumble_dryer_last_cycle') %}
+          {% set e = states('sensor.tumble_dryer_last_cycle_energy') %}
+          {% set f = state_attr('sensor.tumble_dryer_last_cycle', 'finished') %}
+          {% set ns = namespace(parts=[]) %}
+          {% if d | is_number %}{% set ns.parts = ns.parts + [d ~ ' min'] %}{% endif %}
+          {% if d | is_number and e | is_number
+                and not state_attr('sensor.tumble_dryer_last_cycle_energy', 'open') %}
+            {% set ns.parts = ns.parts + [e ~ ' kWh'] %}
+          {% endif %}
+          {% if as_datetime(f, none) %}
+            {% set ns.parts = ns.parts + [time_since(as_datetime(f)) ~ ' ago'] %}
+          {% endif %}
+          {{ ns.parts | join(' · ') if ns.parts else 'Not recorded yet' }}
+
+      - name: Robot vacuum last run
+        unique_id: robot_vacuum_last_run
+        icon: mdi:circle
+        state: >-
+          {% set t = as_datetime(state_attr('sensor.robot_vacuum_runs', 'last_run'), none) %}
+          {{ (time_since(t) ~ ' ago') if t else 'No run yet' }}

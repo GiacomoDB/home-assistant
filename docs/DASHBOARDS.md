@@ -20,7 +20,8 @@ Entity IDs are in [ENTITIES.md](ENTITIES.md); the custom cards in
   top, then 24-hour temperature and humidity graphs.
 - **Cat Fountain**: the water level (`petlibro-water-level-card.yaml`).
 - **Energy**: today's cost, usage and unit rate from the Hildebrand Glow feed
-  (`energy-card.yaml`), plus 30 days of daily cost.
+  (`energy-card.yaml`), plus 30 days of daily usage (not cost: see
+  [ENTITIES.md](ENTITIES.md#energy--hildebrand-glow-dcc)).
 - **Air Quality**: CO₂ and PM2.5 from the Alpstuga monitor.
 
 **Fountain**: the fountain stat card and today-vs-yesterday chart, 30 days of
