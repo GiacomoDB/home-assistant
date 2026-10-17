@@ -1,10 +1,14 @@
 # Dashboards
 
-`dashboards/home.yaml` is the one dashboard this repo deploys: phone-first,
-six views, written over `dashboard-general` (the mapping is in
-`dashboards/dashboards.yaml`). Anything not in that manifest is never touched;
-in particular `dashboard-giacomo`, the Kindle Dashboard. Snapshots of every
-dashboard as it was before the merge are in `dashboards/_pulled/`.
+The repo deploys two dashboards (the mapping is in
+`dashboards/dashboards.yaml`):
+
+- `dashboards/home.yaml` over `dashboard-general`: phone-first, six views.
+- `dashboards/tablet.yaml` as `dashboard-tablet`: the wall tablet (below).
+
+Anything not in that manifest is never touched; in particular
+`dashboard-giacomo`, the Kindle Dashboard. Snapshots of every dashboard as it
+was before the merge are in `dashboards/_pulled/`.
 
 Entity IDs are in [ENTITIES.md](ENTITIES.md); the custom cards in
 [CARDS.md](CARDS.md).
@@ -44,6 +48,21 @@ length and energy, a 48-hour timeline of wash and dry phases, cycles per week,
 and energy per day and per month (`packages/appliances.yaml`).
 
 **Buttons**: the light and switch buttons.
+
+## Tablet
+
+The wall tablet, a Galaxy Tab A7 in portrait (about 800×1280 CSS px): the
+state of the house on one screen, read from across the room. A clock and the
+weather, warnings (lights offline, water leaks; hidden when there are none),
+the heating with −/+, Boost, Back to schedule and today's schedule as a bar,
+the six rooms, eight small tiles (fountain, litter box, energy, air, washer,
+dryer, vacuum, network) and the lights as toggles. Dimmer colours from 22:00
+to 07:00.
+
+It is one card, `www/tablet-panel-card.js` (see [CARDS.md](CARDS.md)), on a
+panel view; `tablet.yaml` only lists its entities. On the tablet, open
+`/dashboard-tablet/panel?kiosk`: the `?kiosk` makes kiosk-mode (HACS) hide
+HA's header and sidebar, so the same dashboard opens normally elsewhere.
 
 ## Layout
 

@@ -325,12 +325,15 @@ and SSH never has to be reachable from GitHub:
 2. Inside HA, `/config/deploy/pull_packages.py`:
    - asks GitHub whether the commit is on `main`, and refuses it otherwise
      (GitHub serves a fork's commits from the parent repo's URLs);
-   - downloads that commit's tarball and reads only `packages/*.yaml` and
-     itself from it;
+   - downloads that commit's tarball and reads only `packages/*.yaml`,
+     `www/*.js` and itself from it;
    - snapshots `/config/packages` to `/config/deploy/packages.prev`;
    - writes the changed files and deletes the ones an earlier pull installed
      that the repo no longer has. Files added by hand on the HA side are
      never touched;
+   - writes the `www/*.js` cards to `/config/www/repo/` (served as
+     `/local/repo/`; a folder of their own, so hand-placed files in
+     `/config/www` are left alone);
    - reports what changed, and whether any change is outside what
      `reload_all` can apply.
 3. CI runs HA's config check (`POST /api/config/core/check_config`). If it
@@ -339,7 +342,10 @@ and SSH never has to be reachable from GitHub:
 4. CI calls `homeassistant.reload_all`, or restarts when a change needs it
    (a `sensor:` platform, `shell_command:`, any domain outside the list in
    `pull_packages.py`), and waits until HA is running again.
-5. The dashboards deploy last, so they find the new entities.
+5. The dashboards deploy last, so they find the new entities. That step
+   also creates a manifest dashboard that doesn't exist yet, and points a
+   dashboard resource at each `www/` card with a `?v=` that changes with the
+   file, so browsers load the new version on their next reload.
 
 The script updates itself from each pull. A push that changes nothing in
 `packages/` is a no-op apart from the dashboards.

@@ -1,0 +1,95 @@
+# The wall tablet (Galaxy Tab A7, portrait): the state of the house on one
+# screen, read from across the room. One view, one card: the layout lives in
+# www/tablet-panel-card.js; this file only says which entities fill it.
+#
+# A separate dashboard from home.yaml, which stays as it is. Open it on the
+# tablet as /dashboard-tablet/panel?kiosk -- kiosk-mode (HACS) hides HA's header
+# and sidebar only when the URL asks, so on a laptop it opens normally.
+#
+# Every entity sits under a key ending in `_entity` (or `entity`), which
+# `ha.py deploy --dry-run` checks against HA.
+
+views:
+  - title: Panel
+    path: panel
+    type: panel
+    cards:
+      - type: custom:tablet-panel-card
+        # Dimmer colours overnight.
+        night:
+          from: "22:00"
+          to: "07:00"
+        weather_entity: weather.forecast_home
+
+        heating:
+          climate_entity: climate.heating
+          target_entity: sensor.heating_desired_target
+          reference_entity: sensor.heating_reference_temperature
+          manual_entity: input_number.heating_manual_target
+          boost_entity: timer.heating_boost
+          resume_entity: script.heating_resume
+          schedule_entity: schedule.heating
+          setback_entity: input_number.heating_setback
+          hold_entity: input_datetime.heating_hold_until
+          pause_entity: input_datetime.heating_override_until
+          live_entity: input_boolean.heating_controller_enabled
+
+        # Same rooms and sensors as climate-table-card.yaml.
+        rooms:
+          - name: Living room
+            temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
+            humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity_4
+          - name: Kitchen
+            temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature
+            humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity
+          - name: Bedroom
+            temperature_entity: sensor.alpstuga_air_quality_monitor_temperature
+            humidity_entity: sensor.alpstuga_air_quality_monitor_humidity
+          - name: Babyroom
+            temperature_entity: sensor.babyroom_babyroom_temperature
+            humidity_entity: sensor.babyroom_babyroom_humidity
+          - name: Bath
+            temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
+            humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity_5
+          - name: Hall
+            temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
+            humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity_3
+
+        # The eight small tiles, in this fixed order: fountain, litter box,
+        # energy, air, washer, dryer, vacuum, network.
+        tiles:
+          fountain_level_entity: sensor.dockstream_smart_fountain_remaining_water_2
+          fountain_today_entity: sensor.dockstream_smart_fountain_today_s_water_consumption
+          fountain_yesterday_entity: sensor.dockstream_smart_fountain_yesterday_s_water_consumption
+          litter_visits_entity: sensor.litter_box_visits_today
+          litter_occupancy_entity: binary_sensor.cat_in_litter_box
+          energy_cost_entity: sensor.electricity_meter_cost_today
+          energy_usage_entity: sensor.electricity_meter_usage_today
+          # Disabled by the Glow integration until enabled in Settings →
+          # Entities; the tile says "no rate" until then.
+          energy_rate_entity: sensor.dcc_sourced_smart_electricity_meter_rate
+          co2_entity: sensor.alpstuga_air_quality_monitor_carbon_dioxide
+          pm25_entity: sensor.alpstuga_air_quality_monitor_pm2_5
+          washer_status_entity: sensor.washing_machine_status
+          washer_last_entity: sensor.washing_machine_last_cycle_summary
+          dryer_status_entity: sensor.tumble_dryer_status
+          dryer_last_entity: sensor.tumble_dryer_last_cycle_summary
+          vacuum_battery_entity: sensor.robot_vacuum_battery
+          vacuum_status_entity: sensor.robot_vacuum_status
+          vacuum_last_entity: sensor.robot_vacuum_last_run
+          dns_queries_entity: sensor.adguard_home_dns_queries
+          dns_blocked_ratio_entity: sensor.adguard_home_dns_queries_blocked_ratio
+
+        lights:
+          - name: Big light
+            entity: switch.big_light
+          - name: Tree
+            entity: switch.tree
+          - name: Entrance
+            entity: switch.kettelinch
+          - name: Lampada Cucina
+            entity: light.kajplats_e27_ws_globe_1521lm
+          - name: Lampadina
+            entity: switch.lampadina
+          - name: Badjour
+            entity: light.kajplats_e14_ws_globe_806lm

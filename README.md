@@ -1,7 +1,8 @@
 # Home Assistant
 
-Source of truth for my Home Assistant setup: dashboards, packages (automations
-and their helper entities), custom cards and blueprints. Edit here, not in the
+Source of truth for my Home Assistant setup: dashboards (phone/laptop and the
+wall tablet), packages (automations and their helper entities), custom cards
+and blueprints. Edit here, not in the
 HA UI: a deploy overwrites what's live.
 
 **On every push to `main`**, GitHub Actions validates everything, then:
@@ -28,10 +29,11 @@ can run commands on it, so keep 2FA on the GitHub account.
 ## Layout
 
 ```
-dashboards/           home.yaml + the manifest mapping it to HA; _pulled/ = snapshots
+dashboards/           home.yaml, tablet.yaml + the manifest mapping them to HA; _pulled/ = snapshots
 packages/             one package per feature; HA pulls these on deploy
 automations/_pulled/  read-only snapshots of automations still owned by the HA UI
 *-card.yaml, *.js     custom cards, !included by the dashboard
+www/                  JS cards HA pulls on deploy (the tablet panel)
 ikea-billresa-*.yaml  blueprints
 themes/               theme files, copied to HA by hand (currently unused)
 scripts/ha.py         validate / deploy / entity lookup CLI

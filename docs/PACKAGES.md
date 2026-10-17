@@ -53,4 +53,4 @@ HomeKit thermostat renamed to `climate.heating`; see the file header.
 ## Deploy plumbing — `deploy.yaml`
 
 Two shell commands, `pull_packages` and `rollback_packages`, that CI calls to
-deploy this folder. See [SETUP.md](SETUP.md#automatic-deploys).
+deploy this folder (and the custom cards in `www/`). See [SETUP.md](SETUP.md#automatic-deploys).

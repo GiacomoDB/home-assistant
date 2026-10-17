@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pull packages/ from GitHub into Home Assistant's config. Runs INSIDE HA.
+"""Pull packages/ and www/ from GitHub into Home Assistant's config. Runs INSIDE HA.
 
 Not run from the laptop or CI. It lives at /config/deploy/pull_packages.py and
 runs in the Home Assistant container, through the two shell commands in
@@ -15,18 +15,23 @@ PULL
    through the parent repo's URLs, so without this check, anyone holding the
    HA token could push a commit to a fork and have HA install it. GitHub's
    compare API says whether <sha> is main itself or an ancestor of it.
-2. Downloads that commit's tarball and reads only packages/*.yaml and this
-   script out of it. Nothing is extracted by path, so a crafted archive cannot
-   write anywhere else.
+2. Downloads that commit's tarball and reads only packages/*.yaml, www/*.js
+   and this script out of it. Nothing is extracted by path, so a crafted
+   archive cannot write anywhere else.
 3. Snapshots /config/packages to /config/deploy/packages.prev, then writes
    the changed files (each atomically) and deletes files that an earlier pull
    installed but the repo no longer has. Files added on the HA side by hand,
    and never part of a pull, are left alone.
-4. Prints one JSON line: commit, changed, removed, and whether a restart is
-   needed. A restart is needed when a change touches a domain that
-   `homeassistant.reload_all` can't apply (anything outside RELOADABLE: a
-   `sensor:` platform, `shell_command:`...). This script never reloads or
-   restarts; CI does that after HA's config check passes.
+   The www/*.js cards go to /config/www/repo/ (served as /local/repo/), a
+   folder of their own so files put in /config/www by hand are never touched.
+   They are written as they come, outside the snapshot: a card can't fail
+   HA's config check, so it has nothing to roll back from.
+4. Prints one JSON line: commit, changed, removed, www (the cards written),
+   and whether a restart is needed. A restart is needed when a change
+   touches a domain that `homeassistant.reload_all` can't apply (anything
+   outside RELOADABLE: a `sensor:` platform, `shell_command:`...). This
+   script never reloads or restarts; CI does that after HA's config check
+   passes.
 
 ROLLBACK
 Restores the snapshot. CI runs it when the config check fails, so a broken
@@ -58,12 +63,15 @@ PREV = STATE / "packages.prev"
 MANIFEST = STATE / "manifest.json"
 PREV_MANIFEST = STATE / "manifest.prev.json"
 SELF = STATE / "pull_packages.py"
+WWW = CONFIG / "www" / "repo"
+WWW_MANIFEST = STATE / "www-manifest.json"
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 # The archive's top directory is <repo>-<sha>/. Same filename rule as
 # `ha.py validate`: !include_dir_named makes the filename the package key.
 PACKAGE_MEMBER = re.compile(r"^[^/]+/packages/([A-Za-z0-9_]+\.yaml)$")
 SELF_MEMBER = re.compile(r"^[^/]+/scripts/pull_packages\.py$")
+WWW_MEMBER = re.compile(r"^[^/]+/www/([A-Za-z0-9_-]+\.js)$")
 MAX_DOWNLOAD = 20 * 1024 * 1024
 
 # Domains whose config `homeassistant.reload_all` applies in place. A change
@@ -164,6 +172,7 @@ def pull(sha: str) -> dict:
 
     archive = fetch(f"https://codeload.github.com/{REPO}/tar.gz/{sha}")
     files: dict[str, bytes] = {}
+    cards: dict[str, bytes] = {}
     new_self = None
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
         for member in tar.getmembers():
@@ -174,6 +183,10 @@ def pull(sha: str) -> dict:
                 files[match.group(1)] = tar.extractfile(member).read()
             elif SELF_MEMBER.match(member.name):
                 new_self = tar.extractfile(member).read()
+            else:
+                card = WWW_MEMBER.match(member.name)
+                if card:
+                    cards[card.group(1)] = tar.extractfile(member).read()
     if not files:
         raise SystemExit(f"error: no packages/*.yaml in {sha}; refusing to deploy nothing")
 
@@ -206,6 +219,8 @@ def pull(sha: str) -> dict:
             (PACKAGES / name).unlink()
     MANIFEST.write_text(json.dumps(sorted(files)))
 
+    written = install_cards(cards)
+
     # Takes effect from the next pull; this run finishes on the old code.
     if new_self is not None and (not SELF.exists() or SELF.read_bytes() != new_self):
         write_atomic(SELF, new_self)
@@ -214,9 +229,26 @@ def pull(sha: str) -> dict:
         "commit": sha,
         "changed": changed,
         "removed": removed,
+        "www": written,
         "restart": bool(reasons),
         "reasons": reasons,
     }
+
+
+def install_cards(cards: dict[str, bytes]) -> list[str]:
+    """Write changed cards to /config/www/repo; delete ones the repo dropped."""
+    WWW.mkdir(parents=True, exist_ok=True)
+    written = sorted(
+        name for name, data in cards.items()
+        if not (WWW / name).exists() or (WWW / name).read_bytes() != data
+    )
+    for name in written:
+        write_atomic(WWW / name, cards[name])
+    for name in read_manifest(WWW_MANIFEST):
+        if name not in cards:
+            (WWW / name).unlink(missing_ok=True)
+    WWW_MANIFEST.write_text(json.dumps(sorted(cards)))
+    return written
 
 
 def rollback() -> dict:

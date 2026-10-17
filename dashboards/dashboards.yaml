@@ -21,3 +21,11 @@
 - file: home.yaml
   url_path: dashboard-general
   title: Home
+
+# The wall tablet. `deploy` creates the dashboard the first time (an HA
+# dashboard must exist before its config can be saved), using `title` and
+# `icon` for the sidebar entry; after that only the config is written.
+- file: tablet.yaml
+  url_path: dashboard-tablet
+  title: Tablet
+  icon: mdi:circle

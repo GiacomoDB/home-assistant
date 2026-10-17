@@ -9,7 +9,8 @@ Subcommands
   validate  parse the dashboard YAML only -- no network, no credentials
 
 `deploy` issues `lovelace/config/save`, the same command the frontend's raw
-configuration editor uses. The dashboard stays in normal storage mode, so it is
+configuration editor uses. It also creates a listed dashboard that doesn't
+exist yet, and points a dashboard resource at each card in www/. The dashboard stays in normal storage mode, so it is
 still editable in the UI -- but a deploy overwrites whatever is live, so treat
 this repo as the source of truth and edit here.
 
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -87,6 +89,10 @@ MANIFEST = DASHBOARD_DIR / "dashboards.yaml"
 # reminder that nothing here is deployed -- only the manifest drives that.
 PULL_DIR = DASHBOARD_DIR / "_pulled"
 PACKAGE_DIR = REPO_ROOT / "packages"
+# Custom cards. HA pulls these into /config/www/repo/ with the packages
+# (pull_packages.py), which serves them at /local/repo/.
+WWW_DIR = REPO_ROOT / "www"
+WWW_URL = "/local/repo/"
 AUTOMATION_PULL_DIR = REPO_ROOT / "automations" / "_pulled"
 
 # Cloudflare Tunnel drops the occasional connection while cloudflared
@@ -326,7 +332,10 @@ def referenced_entities(node, found: set[str] | None = None) -> set[str]:
 
     if isinstance(node, dict):
         for key, value in node.items():
-            if key in ("entity", "entity_id") and isinstance(value, str):
+            # `*_entity`: custom cards that take several entities by role,
+            # like tablet-panel-card's `target_entity`.
+            if (key in ("entity", "entity_id") or key.endswith("_entity")) \
+                    and isinstance(value, str):
                 found.add(value)
             elif key == "entities" and isinstance(value, list):
                 for item in value:
@@ -851,6 +860,10 @@ def cmd_deploy_packages(args) -> int:
 
     changed, removed = result.get("changed", []), result.get("removed", [])
     print(f"  commit   {result.get('commit')}")
+    # Cards need no reload: the dashboard deploy that follows bumps their
+    # resource version, and browsers load the new file on their next reload.
+    for name in result.get("www", []):
+        print(f"  card     {name}")
     if not changed and not removed:
         print("  packages unchanged; nothing to reload")
         ha.close()
@@ -1027,6 +1040,43 @@ def cmd_pull(args) -> int:
     return 0
 
 
+def card_resources() -> dict[str, str]:
+    """Each www/*.js card's resource URL, versioned by its content.
+
+    The ?v= changes whenever the file does, so browsers (the tablet above all,
+    which never reloads by itself) fetch the new card instead of a cached one.
+    """
+    return {
+        WWW_URL + path.name: hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+        for path in sorted(WWW_DIR.glob("*.js"))
+    }
+
+
+def ensure_resources(ha, dry_run: bool) -> None:
+    """Point a dashboard resource at each repo card, at its current version.
+
+    Matches resources by URL without the query, so resources added by hand or
+    by HACS are never touched.
+    """
+    existing = {
+        item["url"].split("?")[0]: item for item in ha.command("lovelace/resources")
+    }
+    for url, version in card_resources().items():
+        wanted = f"{url}?v={version}"
+        item = existing.get(url)
+        if item and item["url"] == wanted:
+            continue
+        if dry_run:
+            print(f"  dry-run: would {'update' if item else 'add'} resource {wanted}")
+        elif item:
+            ha.command("lovelace/resources/update", resource_id=item["id"],
+                       res_type="module", url=wanted)
+            print(f"  resource {url} → v={version}")
+        else:
+            ha.command("lovelace/resources/create", res_type="module", url=wanted)
+            print(f"  resource {url} added (v={version})")
+
+
 def cmd_deploy(args) -> int:
     entries = load_manifest()
     configs = {entry["file"]: load_dashboard(entry) for entry in entries}
@@ -1036,6 +1086,10 @@ def cmd_deploy(args) -> int:
 
     known = {state["entity_id"] for state in ha.command("get_states")}
     problems = 0
+
+    # Before the dashboards, so a dashboard never renders without its card.
+    ensure_resources(ha, args.dry_run)
+    existing = {d.get("url_path") for d in ha_dashboards(ha)}
 
     for entry in entries:
         config = configs[entry["file"]]
@@ -1047,6 +1101,22 @@ def cmd_deploy(args) -> int:
             print(f"  warning: {label} references {len(missing)} unknown entit(y|ies):")
             for entity_id in missing:
                 print(f"    - {entity_id}")
+
+        url_path = entry.get("url_path")
+        if url_path not in existing:
+            if args.dry_run:
+                print(f"  dry-run: would create dashboard {url_path}")
+            else:
+                ha.command(
+                    "lovelace/dashboards/create",
+                    url_path=url_path,
+                    title=entry.get("title", url_path),
+                    icon=entry.get("icon", "mdi:circle"),
+                    mode="storage",
+                    show_in_sidebar=True,
+                    require_admin=False,
+                )
+                print(f"  created dashboard {url_path}")
 
         if args.dry_run:
             print(f"  dry-run: would deploy {label}")

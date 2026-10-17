@@ -14,6 +14,12 @@ The HACS cards they need are listed in [SETUP.md §4](SETUP.md#4-custom-cards-ha
 | `petlibro-water-level-card.yaml` | Just the fountain level | html-template-card |
 | `petlibro-fountain-chart-card.yaml` | Today's vs yesterday's intake on one time axis | apexcharts-card |
 | `eink-sensor-card.js` | One sensor value, for the Kindle e-ink dashboard | nothing (a JS resource) |
+| `www/tablet-panel-card.js` | The whole wall-tablet screen | nothing; deployed by CI |
+
+Cards in `www/` deploy themselves: HA pulls them into `/config/www/repo/`
+with the packages, and `ha.py deploy` points a dashboard resource at each
+one with a `?v=` that changes with the file. `eink-sensor-card.js` predates
+that and is still copied by hand.
 
 ## A note on CSS in `html-template-card`
 

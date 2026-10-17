@@ -19,6 +19,7 @@ on:
     paths:
       - "dashboards/**"
       - "packages/**"
+      - "www/**"
       - "scripts/**"
       - "*.yaml"
       - ".github/workflows/deploy.yml"
@@ -26,6 +27,7 @@ on:
     paths:
       - "dashboards/**"
       - "packages/**"
+      - "www/**"
       - "scripts/**"
       - "*.yaml"
       - ".github/workflows/deploy.yml"
