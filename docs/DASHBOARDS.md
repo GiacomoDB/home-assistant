@@ -1,10 +1,11 @@
 # Dashboards
 
-The repo deploys two dashboards (the mapping is in
+The repo deploys three dashboards (the mapping is in
 `dashboards/dashboards.yaml`):
 
 - `dashboards/home.yaml` over `dashboard-general`: phone-first, six views.
 - `dashboards/tablet.yaml` as `dashboard-tablet`: the wall tablet (below).
+- `dashboards/laptop.yaml` as `dashboard-laptop`: the laptop (below).
 
 Anything not in that manifest is never touched; in particular
 `dashboard-giacomo`, the Kindle Dashboard. Snapshots of every dashboard as it
@@ -63,6 +64,31 @@ It is one card, `www/tablet-panel-card.js` (see [CARDS.md](CARDS.md)), on a
 panel view; `tablet.yaml` only lists its entities. On the tablet, open
 `/dashboard-tablet/panel?kiosk`: the `?kiosk` makes kiosk-mode (HACS) hide
 HA's header and sidebar, so the same dashboard opens normally elsewhere.
+
+## Laptop
+
+Seven pages for checking and changing things at a desk, with a sidebar of
+their own: **Home** (heating controls, rooms, lights, a summary of each other
+page, 24 hours of room temperatures), **Heating** (controls, the live switch,
+what the controller sees and sends, 24 hours of target vs bedroom vs sent,
+today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
+box, today against yesterday, 31 days of water, sessions and visits),
+**Energy** (kWh per measured device by day and month, and a unit rate box that
+turns them into pounds), **Appliances** (washer, dryer and vacuum with their
+switches and Start cleaning, energy per day and month), **Network** (AdGuard
+counts, 24 hours of queries, its switches) and **Lights** (each light with
+why it's offline and what to do, brightness, plugs, all off).
+
+Each page is a panel view holding `www/laptop-dashboard-card.js` with its
+`page:`; every view shares one config through a YAML anchor in `laptop.yaml`.
+Charts come from HA's history and long-term statistics, read over the
+viewer's own connection. Open `/dashboard-laptop/home?kiosk` to hide HA's
+header; the card's sidebar keeps the `?kiosk` from page to page.
+
+Energy is only what measures itself (washer, dryer, vacuum, the Grillplats
+plug): there's no smart meter, and the Glow feed's daily totals came out
+below what the washer and dryer alone used, so the laptop shows no house
+total. The rate is `input_number.electricity_unit_rate` (`packages/energy.yaml`).
 
 ## Layout
 

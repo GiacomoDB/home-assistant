@@ -49,6 +49,9 @@ HomeKit thermostat renamed to `climate.heating`; see the file header.
   cooldown, so a cat holding still mid-visit doesn't count twice, and counts
   today's visits with `history_stats`, since the occupancy sensor alone has no
   statistics to chart.
+- **`energy.yaml`**: the electricity unit rate, set from the laptop
+  dashboard's Energy page and kept across restarts, so measured kWh can show
+  in pounds. There's no smart meter to read a tariff from.
 
 ## Deploy plumbing — `deploy.yaml`
 

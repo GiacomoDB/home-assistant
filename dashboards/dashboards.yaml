@@ -29,3 +29,10 @@
   url_path: dashboard-tablet
   title: Tablet
   icon: mdi:circle
+
+# The laptop: seven pages (home, heating, cat, energy, appliances, network,
+# lights), created on the first deploy like the tablet's.
+- file: laptop.yaml
+  url_path: dashboard-laptop
+  title: Laptop
+  icon: mdi:circle

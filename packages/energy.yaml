@@ -1,0 +1,17 @@
+# Electricity unit rate -- the one number the Energy page of the laptop
+# dashboard (dashboards/laptop.yaml) needs to turn measured kWh into pounds.
+#
+# There's no smart meter, so nothing in HA knows the tariff: type the rate from
+# the bill into the page's Unit rate box, which sets this helper. No `initial`
+# on purpose: HA restores the last value across restarts and deploys, so the
+# rate is set once and survives. 0 means "not set" and the page shows kWh only.
+
+input_number:
+  electricity_unit_rate:
+    name: Electricity unit rate
+    min: 0
+    max: 100
+    step: 0.01
+    unit_of_measurement: "p/kWh"
+    mode: box
+    icon: mdi:circle
