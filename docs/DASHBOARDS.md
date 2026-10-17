@@ -56,8 +56,8 @@ state of the house on one screen, read from across the room. A clock and the
 weather, warnings (lights offline, water leaks; hidden when there are none),
 the heating with −/+, Boost, Back to schedule and today's schedule as a bar,
 the six rooms, eight small tiles (fountain, litter box, energy, air, washer,
-dryer, vacuum, network) and the lights as toggles. Dimmer colours from 22:00
-to 07:00.
+dryer, vacuum, network) and the lights as toggles. Light colours by day,
+dark and dim from 22:00 to 07:00.
 
 It is one card, `www/tablet-panel-card.js` (see [CARDS.md](CARDS.md)), on a
 panel view; `tablet.yaml` only lists its entities. On the tablet, open

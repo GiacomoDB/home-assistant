@@ -24,13 +24,14 @@
 const FONTS =
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap';
 
-const DAY = { ground: '#0F1214', tile: '#181D21', raised: '#20262B', line: '#262D33',
-  ink: '#E8ECEF', muted: '#9AA6B0', heat: '#F0A04B', water: '#5DB0F0',
-  alertBg: '#2A1C17', alertFg: '#F5A58C', alertLine: '#5A3426', blockOn: '#4A3522' };
-// Dimmer and warmer, for the hours the panel lights a dark room.
+// `press` is the brightness of a pressed button: darker on light, lighter on dark.
+const DAY = { ground: '#EEF1F4', tile: '#FFFFFF', raised: '#F3F5F7', line: '#DDE2E7',
+  ink: '#1A1F26', muted: '#5C6773', heat: '#C2571A', water: '#2563B8',
+  alertBg: '#FFF4EE', alertFg: '#9A3F0E', alertLine: '#F2C9B3', blockOn: '#F6DCC8', press: 0.92 };
+// Dark and dim, for the hours a white screen would light up a dark room.
 const NIGHT = { ground: '#050607', tile: '#0C0F11', raised: '#13171A', line: '#1A1F23',
   ink: '#9AA3AA', muted: '#6B757D', heat: '#B07A3E', water: '#4C7FA6',
-  alertBg: '#170F0C', alertFg: '#B9806C', alertLine: '#2E1D16', blockOn: '#2A2016' };
+  alertBg: '#170F0C', alertFg: '#B9806C', alertLine: '#2E1D16', blockOn: '#2A2016', press: 1.35 };
 
 const BOOST_TARGET = 25;
 const STEP_DELAY_MS = 1200;
@@ -463,7 +464,7 @@ function styles(t) {
   .tile { background: ${t.tile}; border: 1px solid ${t.line}; border-radius: 14px; }
   button { font: 500 17px 'IBM Plex Sans', system-ui, sans-serif; color: ${t.ink}; cursor: pointer;
     background: ${t.raised}; border: 1px solid ${t.line}; -webkit-tap-highlight-color: transparent; }
-  button:active { filter: brightness(1.35); }
+  button:active { filter: brightness(${t.press}); }
   button:disabled { opacity: .4; cursor: default; }
 
   .top { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 4px; }

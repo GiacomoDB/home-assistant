@@ -15,7 +15,7 @@ views:
     type: panel
     cards:
       - type: custom:tablet-panel-card
-        # Dimmer colours overnight.
+        # Light by day; dark and dim overnight, so the screen doesn't light the room.
         night:
           from: "22:00"
           to: "07:00"
