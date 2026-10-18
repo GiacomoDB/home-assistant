@@ -80,6 +80,9 @@ views:
           dns_queries_entity: sensor.adguard_home_dns_queries
           dns_blocked_ratio_entity: sensor.adguard_home_dns_queries_blocked_ratio
 
+        # The router's WAN status: an alert when the internet is down.
+        internet_entity: binary_sensor.icotera_router_wan_status
+
         lights:
           - name: Big light
             entity: switch.big_light

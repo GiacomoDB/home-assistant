@@ -45,6 +45,9 @@ const BOOST_TARGET = 25;
 const STEP_DELAY_MS = 1200;
 const HISTORY_TTL = 5 * 60000;
 const STATS_TTL = 30 * 60000;
+const ROUTER_GRACE_MS = 5 * 60000;
+// Router data rates to Mbit/s, by the sensor's unit.
+const RATE_TO_MBIT = { 'bit/s': 1e-6, 'kbit/s': 1e-3, 'Mbit/s': 1, 'B/s': 8e-6, 'kB/s': 8e-3, 'KiB/s': 8192e-6, 'MB/s': 8, 'MiB/s': 8.388608 };
 const DAYS = 31;
 const MONTHS = 11;
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -206,6 +209,9 @@ class LaptopDashboardCard extends HTMLElement {
     if (page === 'network') {
       const n = c.network || {};
       r.push({ name: 'dns24', kind: 'history', hours: 24, ids: [n.queries_entity, n.blocked_entity] });
+      const net = n.internet || {};
+      r.push({ name: 'traffic24', kind: 'short', hours: 24, ids: [net.download_entity, net.upload_entity] });
+      r.push({ name: 'wan7', kind: 'states', hours: 7 * 24, ids: [net.status_entity] });
     }
     return r.map((req) => ({ ...req, ids: req.ids.filter(Boolean) })).filter((req) => req.ids.length);
   }
@@ -232,28 +238,31 @@ class LaptopDashboardCard extends HTMLElement {
 
   async _fetch(req) {
     const now = new Date();
-    if (req.kind === 'history') {
+    if (req.kind === 'history' || req.kind === 'states') {
       const start = new Date(now.getTime() - req.hours * 3600000);
       const result = await this._hass.callWS({
         type: 'history/history_during_period', start_time: start.toISOString(), end_time: now.toISOString(),
         entity_ids: req.ids, minimal_response: true, no_attributes: true, significant_changes_only: false,
       });
-      // { id: [[ms, number|null], ...] }
+      // { id: [[ms, number|null], ...] }, or the raw state strings for 'states'
       const out = {};
       for (const id of req.ids) {
-        out[id] = (result[id] || []).map((p) => [(p.lu ?? p.lc) * 1000, num(p.s)]);
+        out[id] = (result[id] || []).map((p) => [(p.lu ?? p.lc) * 1000, req.kind === 'states' ? p.s : num(p.s)]);
       }
       return { from: start.getTime(), to: now.getTime(), series: out };
     }
     if (req.kind === 'short') {
       // 5-minute means, which HA keeps for about 10 days: light enough to
       // fetch a week of, unlike the raw history of a plug reporting every few seconds.
-      const from = new Date(startOfDay(now).getFullYear(), now.getMonth(), now.getDate() - (req.days - 1));
+      const from = req.hours
+        ? new Date(now.getTime() - req.hours * 3600000)
+        : new Date(startOfDay(now).getFullYear(), now.getMonth(), now.getDate() - (req.days - 1));
       const result = await this._hass.callWS({
         type: 'recorder/statistics_during_period', start_time: from.toISOString(),
         statistic_ids: req.ids, period: '5minute', types: ['mean'],
       });
-      return { from: from.getTime(), points: (result[req.ids[0]] || []).map((p) => [p.start, num(p.mean)]) };
+      const series = Object.fromEntries(req.ids.map((id) => [id, (result[id] || []).map((p) => [p.start, num(p.mean)])]));
+      return { from: from.getTime(), to: now.getTime(), points: series[req.ids[0]], series };
     }
     const start = req.period === 'day'
       ? new Date(startOfDay(now).getTime() - (req.days - 1) * 86400000)
@@ -555,6 +564,10 @@ class LaptopDashboardCard extends HTMLElement {
       .map((s) => s.attributes.friendly_name || s.entity_id);
     const issues = [];
     if (leaks.length) issues.push(`<strong class="alert-text">Water leak: ${esc(leaks.join(', '))}</strong>`);
+    const internet = this._internetNow();
+    if (internet?.problem) {
+      issues.push(`<a class="alert-text" href="${esc(pageUrl('network'))}" data-action="nav" data-page="network">${esc(internet.problem.toLowerCase())}</a>`);
+    }
     if (offline.length) {
       issues.push(`<a class="alert-text" href="${esc(pageUrl('lights'))}" data-action="nav" data-page="lights">${plural(offline.length, 'light', 'lights')} offline</a>`);
     }
@@ -648,9 +661,11 @@ class LaptopDashboardCard extends HTMLElement {
     const ratio = num(this._value(n.ratio_entity));
     const queries = num(this._value(n.queries_entity));
     const speed = num(this._value(n.speed_entity));
+    const internet = this._internetNow();
     return ['network', 'Network', ratio === null ? '—' : `${ratio.toFixed(1)}%`, [
       queries === null ? '' : `blocked of ${queries.toLocaleString('en-GB')} DNS queries`,
       speed === null ? '' : `Answers in ${speed.toFixed(1)} ms on average`,
+      !internet ? '' : internet.problem || `Internet up, ${mbit(internet.down)} down · ${mbit(internet.up)} up`,
     ]];
   }
 
@@ -915,9 +930,9 @@ class LaptopDashboardCard extends HTMLElement {
       </div>`).join('') : this._chartState('steam7');
     return `<section class="card full" aria-label="${esc(now.name)}">
       <div class="title-row"><h2>${esc(now.name)}</h2><span class="pill ${now.on ? 'on' : ''}">${now.on ? 'On' : 'Off'}</span></div>
-      <div class="steam-top">
+      <div class="split-top">
         <div class="stack"><div class="big">${now.on ? `${now.power.toFixed(0)} W` : 'Off'}</div><div>${esc(status)}</div></div>
-        <div class="steam-stats">
+        <div class="split-stats">
           ${stat(data ? duration(days[6].ms) || '0 min' : '—', '', 'on today')}
           ${stat(data ? duration(weekMs) || '0 min' : '—', '', 'last 7 days')}
           ${stat(month === undefined ? '—' : kwh(month), 'kWh', 'this month')}
@@ -1021,7 +1036,7 @@ class LaptopDashboardCard extends HTMLElement {
       return `<div class="switch-row tall"><span class="stack"><span>${esc(w.name)}</span><span class="small muted">${esc(w.note || '')}</span></span>
         ${s && s.state !== 'unavailable' ? switchButton(s.state === 'on', w.entity, w.name) : '<span class="muted">offline</span>'}</div>`;
     }).join('');
-    const body = `<div class="grid"><div class="grid full" style="--min: 150px">
+    const body = `<div class="grid">${this._internetCard()}<div class="grid full" style="--min: 150px">
       ${stats.map(([label, value, note]) => `<section class="card" aria-label="${esc(label)}"><div class="note">${esc(label)}</div>
         <div class="mid">${esc(value)}</div><div class="note">${esc(note)}</div></section>`).join('')}</div>
       ${chart}
@@ -1032,8 +1047,92 @@ class LaptopDashboardCard extends HTMLElement {
         <div class="two-col">${switches}</div>
       </section>
     </div>`;
-    const lede = ratio === null ? '' : `AdGuard is blocking ${ratio.toFixed(1)}% of DNS lookups${speed === null ? '' : `, answering in ${speed.toFixed(1)} ms`}`;
+    const internet = this._internetNow();
+    const lede = [
+      internet ? internet.problem || 'Internet up' : '',
+      ratio === null ? '' : `AdGuard is blocking ${ratio.toFixed(1)}% of DNS lookups${speed === null ? '' : `, answering in ${speed.toFixed(1)} ms`}`,
+    ].filter(Boolean).join('. ');
     return ['Network', esc(lede), '', body];
+  }
+
+  // ─────────────────────────── internet ───────────────────────────
+
+  // The router's view: whether the line is up, and the traffic in Mbit/s.
+  _internetNow() {
+    const net = this._config.network?.internet;
+    if (!net?.status_entity) return null;
+    const s = this._state(net.status_entity);
+    const speed = (id) => {
+      const st = this._state(id);
+      const v = num(this._value(id));
+      return v === null ? null : v * (RATE_TO_MBIT[st.attributes.unit_of_measurement] ?? 1);
+    };
+    // A router that stops answering for a few minutes is down for the house too;
+    // shorter gaps are HA restarting or a missed poll.
+    const gone = !s || (s.state === 'unavailable' && Date.now() - new Date(s.last_changed).getTime() > ROUTER_GRACE_MS);
+    const problem = s?.state === 'off' ? `Internet down since ${when(s.last_changed)}`
+      : gone ? `Router not answering${s ? ` since ${when(s.last_changed)}` : ''}` : '';
+    return { up: speed(net.upload_entity), down: speed(net.download_entity), problem, state: s };
+  }
+
+  // Outages in the fetched week: 'off' from the router, or no answer past the grace time.
+  _outages() {
+    const net = this._config.network?.internet || {};
+    const data = this._data.wan7?.value;
+    if (!data) return null;
+    const points = data.series[net.status_entity] || [];
+    const list = [];
+    points.forEach(([t, state], i) => {
+      const to = points[i + 1]?.[0] ?? Date.now();
+      if (state === 'off' || (state === 'unavailable' && to - t > ROUTER_GRACE_MS)) {
+        list.push({ from: t, to, ongoing: i === points.length - 1, kind: state === 'off' ? 'Internet down' : 'Router not answering' });
+      }
+    });
+    return { list, since: points.length ? Math.max(points[0][0], data.from) : data.from, from: data.from };
+  }
+
+  _internetCard() {
+    const net = this._config.network?.internet;
+    const now = this._internetNow();
+    if (!net || !now) return '';
+    const outages = this._outages();
+    const uptime = num(this._value(net.uptime_entity));
+    const lastOutage = outages?.list.at(-1);
+    const tracked = outages && outages.since - outages.from > 3600000 ? outages.since : null;
+    const status = now.problem
+      || (lastOutage ? `Up since ${when(new Date(lastOutage.to).toISOString())}`
+        : outages ? `No outages ${tracked ? `since ${when(new Date(tracked).toISOString())}` : 'in the last 7 days'}` : '');
+    const series = [
+      { id: net.download_entity, name: 'Download', colour: C.water },
+      { id: net.upload_entity, name: 'Upload', colour: C.heat },
+    ];
+    const traffic = this._data.traffic24?.value;
+    let chart = this._chartState('traffic24');
+    if (!chart) {
+      // Statistics are in the sensor's own unit; chart them in Mbit/s.
+      const scaled = { ...traffic, series: Object.fromEntries(series.map((s) => {
+        const factor = RATE_TO_MBIT[this._state(s.id)?.attributes.unit_of_measurement] ?? 1;
+        return [s.id, (traffic.series[s.id] || []).map(([t, v]) => [t, v === null ? null : v * factor])];
+      })) };
+      chart = lineChart(scaled, series, { min: 0, unit: '', label: 'Download and upload in Mbit/s over the last 24 hours' });
+    }
+    const rows = outages?.list.slice().reverse().map((o) => `<div class="row"><span>${esc(o.kind)}</span>
+      <span class="right">${esc(when(new Date(o.from).toISOString()))} · ${o.ongoing ? 'ongoing' : esc(duration(o.to - o.from) || 'under a minute')}</span></div>`).join('');
+    return `<section class="card full" aria-label="Internet">
+      <div class="title-row"><h2>Internet</h2><span class="pill ${now.problem ? 'bad' : 'good'}">${now.problem ? 'Down' : 'Up'}</span></div>
+      <div class="split-top">
+        <div class="stack"><div class="big">${now.problem ? 'Down' : 'Up'}</div><div>${esc(status)}</div></div>
+        <div class="split-stats">
+          ${stat(now.down === null ? '—' : mbit(now.down), 'Mbit/s', 'download now')}
+          ${stat(now.up === null ? '—' : mbit(now.up), 'Mbit/s', 'upload now')}
+          ${uptime === null ? '' : stat(ago(new Date(Date.now() - uptime * 1000).toISOString()).replace(' ago', ''), '', 'since the router restarted')}
+        </div>
+      </div>
+      <div class="title-row wrap-row"><h3>Traffic, last 24 hours</h3>${legend(series.map((s) => ({ ...s, name: `${s.name}, Mbit/s` })))}</div>
+      ${chart}
+      <div class="note">5-minute averages of what the house is using, not the line’s top speed.</div>
+      ${outages && outages.list.length ? `<h3>Outages, last 7 days</h3>${rows}` : ''}
+    </section>`;
   }
 
   // ──────────────────────────── lights ────────────────────────────
@@ -1077,6 +1176,9 @@ class LaptopDashboardCard extends HTMLElement {
 }
 
 // ───────────────────────────── helpers ─────────────────────────────
+
+// "0.4", "12": Mbit/s to one decimal while small.
+const mbit = (value) => (value < 10 ? value.toFixed(1) : value.toFixed(0));
 
 // "1 h 20 min", "35 min"; '' for nothing.
 function duration(ms) {
@@ -1170,7 +1272,7 @@ function lineChart(data, series, opts = {}) {
   let min = opts.min ?? Math.floor(Math.min(...values) - 0.5);
   let max = opts.max ?? Math.ceil(Math.max(...values) + 0.5);
   if (opts.min === 0 && opts.max === undefined) max = niceTop((Math.max(...values) * 1.08) / 3) * 3;
-  if (max - min < 2) { min -= 1; max += 1; }
+  if (max - min < 2 && opts.min === undefined) { min -= 1; max += 1; }
   // Whole-degree ranges split into thirds, so the axis labels come out round.
   if (opts.max === undefined && opts.min === undefined) while ((max - min) % 3) max += 1;
   const x = (t) => (((Math.min(Math.max(t, from), to) - from) / (to - from)) * W).toFixed(1);
@@ -1396,8 +1498,8 @@ const STYLES = `
   .hours { display: flex; justify-content: space-between; margin-left: 58px; font-size: 12px; color: ${C.muted}; }
 
   h3 { margin: 6px 0 0; font-size: 15px; font-weight: 600; }
-  .steam-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 40px; }
-  .steam-stats { display: flex; flex-wrap: wrap; gap: 12px 40px; }
+  .split-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 40px; }
+  .split-stats { display: flex; flex-wrap: wrap; gap: 12px 40px; }
   .seg { position: absolute; top: 0; bottom: 0; background: ${C.accent}; border-radius: 3px; }
   .day-total { width: 84px; text-align: right; font-size: 14px; color: ${C.muted}; white-space: nowrap; }
   .steam-hours { margin-right: 98px; }

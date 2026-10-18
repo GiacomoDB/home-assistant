@@ -250,6 +250,14 @@ class TabletPanelCard extends HTMLElement {
       .map((s) => s.attributes.friendly_name || s.entity_id);
     const items = [];
     if (leaks.length) items.push([`Water leak`, leaks.join(', ')]);
+    // The router: 'off' is the line down; no answer for 5 min is the router itself.
+    const wan = this._state(this._config.internet_entity);
+    if (this._config.internet_entity) {
+      const since = wan ? new Date(wan.last_changed) : null;
+      const at = since ? `since ${since.toDateString() === new Date().toDateString() ? hhmm(since) : since.toLocaleDateString('en-GB', { weekday: 'short' })}` : '';
+      if (wan?.state === 'off') items.push(['Internet down', at]);
+      else if (!wan || (wan.state === 'unavailable' && Date.now() - since.getTime() > 5 * 60000)) items.push(['Router not answering', at]);
+    }
     if (offline.length) {
       items.push([`${offline.length} light${offline.length > 1 ? 's' : ''} offline`, offline.join(', ')]);
     }

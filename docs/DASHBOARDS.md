@@ -76,8 +76,8 @@ today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
 box, today against yesterday, 31 days of water, sessions and visits),
 **Energy** (kWh per measured device by day and month, and a unit rate box that
 turns them into pounds), **Appliances** (washer, dryer and vacuum with their
-switches and Start cleaning, the Steam Machine, energy per day and month), **Network** (AdGuard
-counts, 24 hours of queries, its switches) and **Lights** (each light with
+switches and Start cleaning, the Steam Machine, energy per day and month), **Network** (the
+internet connection, then AdGuard counts, 24 hours of queries, its switches) and **Lights** (each light with
 why it's offline and what to do, brightness, plugs, all off).
 
 Each page is a panel view holding `www/laptop-dashboard-card.js` with its
@@ -91,6 +91,14 @@ Energy is only what measures itself (washer, dryer, vacuum, the Grillplats
 plug): there's no smart meter, and the Glow feed's daily totals came out
 below what the washer and dryer alone used, so the laptop shows no house
 total. The rate is `input_number.electricity_unit_rate` (`packages/energy.yaml`).
+
+The **internet** comes from the router (ICOTERA, UPnP integration): up or
+down, download and upload now and over 24 hours in Mbit/s, outages in the
+last 7 days, and how long since the router restarted (its Uptime sensor, which
+the integration leaves disabled until it's enabled under the device). The
+speeds are the house's traffic, not the line's top speed. The line down, or the
+router not answering for 5 minutes, shows in the alerts on all three
+dashboards; the tablet reads it from `internet_entity`.
 
 The **Steam Machine** (the gaming and media-centre PC) has no integration:
 its GRILLPLATS plug's power says when it's on (5 W or more; standby is under

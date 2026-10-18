@@ -115,6 +115,14 @@ appliances:
           entity: switch.robot_vacuum_do_not_disturb
 
 network:
+  # The router (ICOTERA, through the UPnP integration). The speeds are the
+  # traffic it's passing, not the line's top speed. Uptime is disabled by the
+  # integration until enabled in Settings → Devices → ICOTERA router.
+  internet:
+    status_entity: binary_sensor.icotera_router_wan_status
+    download_entity: sensor.icotera_router_download_speed
+    upload_entity: sensor.icotera_router_upload_speed
+    uptime_entity: sensor.icotera_router_uptime
   queries_entity: sensor.adguard_home_dns_queries
   blocked_entity: sensor.adguard_home_dns_queries_blocked
   ratio_entity: sensor.adguard_home_dns_queries_blocked_ratio
