@@ -1,11 +1,12 @@
 # Dashboards
 
-The repo deploys three dashboards (the mapping is in
+The repo deploys four dashboards (the mapping is in
 `dashboards/dashboards.yaml`):
 
 - `dashboards/home.yaml` over `dashboard-general`: phone-first, six views.
 - `dashboards/tablet.yaml` as `dashboard-tablet`: the wall tablet (below).
 - `dashboards/laptop.yaml` as `dashboard-laptop`: the laptop (below).
+- `dashboards/phone.yaml` as `dashboard-phone`: the phone (below).
 
 Anything not in that manifest is never touched; in particular
 `dashboard-giacomo`, the Kindle Dashboard. Snapshots of every dashboard as it
@@ -75,12 +76,13 @@ today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
 box, today against yesterday, 31 days of water, sessions and visits),
 **Energy** (kWh per measured device by day and month, and a unit rate box that
 turns them into pounds), **Appliances** (washer, dryer and vacuum with their
-switches and Start cleaning, energy per day and month), **Network** (AdGuard
+switches and Start cleaning, the Steam Machine, energy per day and month), **Network** (AdGuard
 counts, 24 hours of queries, its switches) and **Lights** (each light with
 why it's offline and what to do, brightness, plugs, all off).
 
 Each page is a panel view holding `www/laptop-dashboard-card.js` with its
-`page:`; every view shares one config through a YAML anchor in `laptop.yaml`.
+`page:`. The entities are in `dashboards/house.yaml`, which `laptop.yaml` and
+`phone.yaml` each `!include` as every view's `house:`.
 Charts come from HA's history and long-term statistics, read over the
 viewer's own connection. Open `/dashboard-laptop/home?kiosk` to hide HA's
 header; the card's sidebar keeps the `?kiosk` from page to page.
@@ -89,6 +91,23 @@ Energy is only what measures itself (washer, dryer, vacuum, the Grillplats
 plug): there's no smart meter, and the Glow feed's daily totals came out
 below what the washer and dryer alone used, so the laptop shows no house
 total. The rate is `input_number.electricity_unit_rate` (`packages/energy.yaml`).
+
+The **Steam Machine** (the gaming and media-centre PC) has no integration:
+its GRILLPLATS plug's power says when it's on (5 W or more; standby is under
+2 W). The Appliances page shows it on or off, the watts, how long it's been
+on today and over 7 days, its energy this month, and a 7-day timeline built
+from HA's 5-minute power statistics (kept about 10 days). The plug's switch is
+on no page on purpose: off would cut the machine's power mid-session.
+
+## Phone
+
+The laptop's pages with `layout: phone`: no sidebar and one column. Home
+follows the phone design: the heating with −/+, today's schedule as a bar and
+Boost / Back to schedule, the lights as a two-column grid, the rooms, and a
+House list (cat, energy, appliances, network, lights) leading to the other
+pages, each of which has a "‹ Home" link back. Open
+`/dashboard-phone/home?kiosk`, or set it as the companion app's default
+dashboard.
 
 ## Layout
 

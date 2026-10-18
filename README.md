@@ -29,11 +29,11 @@ can run commands on it, so keep 2FA on the GitHub account.
 ## Layout
 
 ```
-dashboards/           home.yaml, tablet.yaml, laptop.yaml + the manifest mapping them to HA; _pulled/ = snapshots
+dashboards/           home.yaml, tablet.yaml, laptop.yaml, phone.yaml (+ house.yaml, their shared entities) and the manifest; _pulled/ = snapshots
 packages/             one package per feature; HA pulls these on deploy
 automations/_pulled/  read-only snapshots of automations still owned by the HA UI
 *-card.yaml, *.js     custom cards, !included by the dashboard
-www/                  JS cards HA pulls on deploy (the tablet panel, the laptop pages)
+www/                  JS cards HA pulls on deploy (the tablet panel, the laptop and phone pages)
 ikea-billresa-*.yaml  blueprints
 themes/               theme files, copied to HA by hand (currently unused)
 scripts/ha.py         validate / deploy / entity lookup CLI

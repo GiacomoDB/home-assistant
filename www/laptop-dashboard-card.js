@@ -1,6 +1,11 @@
-// laptop-dashboard-card: every view of the laptop dashboard, one card per
-// panel view (`page: home`, `heating`, ...). dashboards/laptop.yaml gives every
-// view the same config through a YAML anchor, so a page can link to any other.
+// laptop-dashboard-card: every view of the laptop and phone dashboards, one
+// card per panel view (`page: home`, `heating`, ...). Every view's `house:` is
+// dashboards/house.yaml, the entities all pages share, so a page can show a
+// summary of any other.
+//
+// `layout: phone` (dashboards/phone.yaml) drops the sidebar: Home follows the
+// phone design (heating with today's bar, lights, rooms, a list of the other
+// pages) and every other page is the laptop's in one column, with a back link.
 //
 // One card instead of stock cards for the same reason as the tablet panel: one
 // layout and one look across seven pages, with charts drawn from HA's history
@@ -17,7 +22,10 @@
 //   vacuum                     vacuum.start / vacuum.return_to_base
 //   unit rate                  input_number.set_value (packages/energy.yaml)
 //
-// The page's own sidebar navigates inside HA, keeping the query string, so
+// The Steam Machine has no integration; its plug's power says when it's on.
+// Its plug switch is left out on purpose: off would cut power mid-session.
+//
+// The page's own links navigate inside HA, keeping the query string, so
 // /dashboard-laptop/home?kiosk stays in kiosk mode from page to page.
 
 const FONTS = 'https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap';
@@ -84,7 +92,10 @@ const minutesOf = (text) => {
 };
 
 class LaptopDashboardCard extends HTMLElement {
-  setConfig(config) {
+  setConfig(raw) {
+    // Page-level keys (page, layout) win over the shared house config.
+    const config = { ...(raw.house || {}), ...raw };
+    delete config.house;
     if (!config.page || !PAGES.some(([key]) => key === config.page)) {
       throw new Error(`laptop-dashboard-card needs page: one of ${PAGES.map(([key]) => key).join(', ')}`);
     }
@@ -189,6 +200,9 @@ class LaptopDashboardCard extends HTMLElement {
       r.push({ name: 'energyMonths', kind: 'stats', period: 'month', months: MONTHS, types: ['change'],
         ids: [...ids, ...machines.map((m) => m.cycles_entity)] });
     }
+    if (page === 'appliances' && c.steam?.power_entity) {
+      r.push({ name: 'steam7', kind: 'short', days: 7, ids: [c.steam.power_entity] });
+    }
     if (page === 'network') {
       const n = c.network || {};
       r.push({ name: 'dns24', kind: 'history', hours: 24, ids: [n.queries_entity, n.blocked_entity] });
@@ -198,12 +212,12 @@ class LaptopDashboardCard extends HTMLElement {
 
   _load() {
     if (!this._hass) return;
-    if (this._config.page === 'heating' && !this._schedule && Date.now() > this._scheduleRetry) {
+    if (['heating', 'home'].includes(this._config.page) && !this._schedule && Date.now() > this._scheduleRetry) {
       this._loadSchedule();
     }
     for (const req of this._requests()) {
       const have = this._data[req.name];
-      const ttl = req.kind === 'history' ? HISTORY_TTL : STATS_TTL;
+      const ttl = req.kind === 'stats' ? STATS_TTL : HISTORY_TTL;
       if (have && (have.loading || Date.now() - have.at < ttl)) continue;
       this._data[req.name] = { ...have, loading: true, at: Date.now() };
       this._fetch(req).then(
@@ -230,6 +244,16 @@ class LaptopDashboardCard extends HTMLElement {
         out[id] = (result[id] || []).map((p) => [(p.lu ?? p.lc) * 1000, num(p.s)]);
       }
       return { from: start.getTime(), to: now.getTime(), series: out };
+    }
+    if (req.kind === 'short') {
+      // 5-minute means, which HA keeps for about 10 days: light enough to
+      // fetch a week of, unlike the raw history of a plug reporting every few seconds.
+      const from = new Date(startOfDay(now).getFullYear(), now.getMonth(), now.getDate() - (req.days - 1));
+      const result = await this._hass.callWS({
+        type: 'recorder/statistics_during_period', start_time: from.toISOString(),
+        statistic_ids: req.ids, period: '5minute', types: ['mean'],
+      });
+      return { from: from.getTime(), points: (result[req.ids[0]] || []).map((p) => [p.start, num(p.mean)]) };
     }
     const start = req.period === 'day'
       ? new Date(startOfDay(now).getTime() - (req.days - 1) * 86400000)
@@ -350,17 +374,21 @@ class LaptopDashboardCard extends HTMLElement {
       this._schedule = null; // the schedule only changes on a deploy; reread hourly
     }
     const page = this._config.page;
-    const [title, lede, aside, body] = this[`_${page}`]();
-    this.shadowRoot.innerHTML = `<style>${STYLES}</style>
-      <div class="page"><div class="wrap">
-        <nav aria-label="Views">
+    const phone = this._config.layout === 'phone';
+    const [title, lede, aside, body] = phone && page === 'home' ? this._phoneHome() : this[`_${page}`]();
+    const nav = phone ? '' : `<nav aria-label="Views">
           <div class="brand">Home Assistant</div>
           ${PAGES.map(([key, name]) => `<a href="${esc(pageUrl(key))}" data-action="nav" data-page="${key}"
             class="${key === page ? 'here' : ''}" ${key === page ? 'aria-current="page"' : ''}>${ICON}<span>${name}</span></a>`).join('')}
-        </nav>
+        </nav>`;
+    const back = phone && page !== 'home'
+      ? `<a class="back" href="${esc(pageUrl('home'))}" data-action="nav" data-page="home">‹ Home</a>` : '';
+    this.shadowRoot.innerHTML = `<style>${STYLES}</style>
+      <div class="page ${phone ? 'phone' : ''}"><div class="wrap">
+        ${nav}
         <main>
           <header class="head">
-            <div class="titles"><h1>${esc(title)}</h1><div class="lede">${lede}</div></div>
+            <div class="titles">${back}<h1>${esc(title)}</h1><div class="lede">${lede}</div></div>
             ${aside || ''}
           </header>
           ${body}
@@ -397,6 +425,16 @@ class LaptopDashboardCard extends HTMLElement {
     else if (pauseTs > nowTs) mode = `Paused by tado until ${hhmm(new Date(pauseTs * 1000))}`;
     else if (holdTs > nowTs) mode = `Held until ${hhmm(new Date(holdTs * 1000))}`;
     else mode = `${schedule?.state === 'on' ? 'Schedule' : 'Setback'}${nextEvent ? ` until ${nextEvent}` : ''}`;
+    // What follows: the block at the time the hold, pause or block ends.
+    const endTs = pauseTs > nowTs ? pauseTs : holdTs > nowTs ? holdTs
+      : schedule?.attributes.next_event ? new Date(schedule.attributes.next_event).getTime() / 1000 : null;
+    const week = this._schedule?.week;
+    if (this._pending === null && !boosting && endTs && week) {
+      const end = new Date(endTs * 1000);
+      const at = end.getHours() * 60 + end.getMinutes();
+      const next = dayParts(week[WEEKDAYS[end.getDay()]] || [], setback).find((p) => at >= p.from && at < p.to);
+      if (next?.target != null) mode += `, then ${next.target}°`;
+    }
     const live = this._state(h.live_entity)?.state !== 'off';
     const action = this._state(h.climate_entity)?.attributes.hvac_action;
     return {
@@ -408,7 +446,7 @@ class LaptopDashboardCard extends HTMLElement {
     };
   }
 
-  _heatControl(big) {
+  _heatControl(big, between = '') {
     const s = this._heatingState();
     return `<div class="stepper ${big ? 'big' : ''}">
         <button class="round" data-action="step" data-delta="-0.5" aria-label="Lower target by half a degree">−</button>
@@ -418,6 +456,7 @@ class LaptopDashboardCard extends HTMLElement {
         </div>
         <button class="round" data-action="step" data-delta="0.5" aria-label="Raise target by half a degree">+</button>
       </div>
+      ${between}
       <div class="pair">
         <button class="${s.boosting ? '' : 'primary'}" data-action="boost">${s.boosting ? 'Stop boost' : 'Boost 15 min'}</button>
         <button data-action="resume" ${s.overridden ? '' : 'disabled'}>Back to schedule</button>
@@ -508,7 +547,7 @@ class LaptopDashboardCard extends HTMLElement {
 
   // ───────────────────────────── home ─────────────────────────────
 
-  _home() {
+  _issues() {
     const c = this._config;
     const offline = (c.lights || []).filter((l) => this._state(l.entity)?.state === 'unavailable');
     const leaks = Object.values(this._hass.states)
@@ -519,8 +558,12 @@ class LaptopDashboardCard extends HTMLElement {
     if (offline.length) {
       issues.push(`<a class="alert-text" href="${esc(pageUrl('lights'))}" data-action="nav" data-page="lights">${plural(offline.length, 'light', 'lights')} offline</a>`);
     }
-    const lede = issues.length ? `All fine, except ${issues.join(' and ')}` : 'All fine';
+    return issues.length ? `All fine, except ${issues.join(' and ')}` : 'All fine';
+  }
 
+  _home() {
+    const c = this._config;
+    const lede = this._issues();
     const now = new Date();
     const wx = this._state(c.weather_entity);
     const temp = wx ? num(wx.attributes.temperature) : null;
@@ -591,8 +634,13 @@ class LaptopDashboardCard extends HTMLElement {
   _appliancesSummary() {
     const machines = this._config.appliances?.machines || [];
     const lines = machines.map((m) => `${m.name}: ${this._value(m.status_entity) ?? 'offline'}`);
-    const busy = machines.filter((m) => !/^(idle|docked|finished|off)/i.test(this._value(m.status_entity) ?? 'idle'));
-    return ['appliances', 'Appliances', busy.length ? busy.map((m) => m.name).join(', ') : 'All idle', lines];
+    const busy = machines.filter((m) => !/^(idle|docked|finished|off)/i.test(this._value(m.status_entity) ?? 'idle')).map((m) => m.name);
+    const steam = this._steamNow();
+    if (steam) {
+      lines.push(`${steam.name}: ${steam.on ? `on, ${steam.power.toFixed(0)} W` : 'off'}`);
+      if (steam.on) busy.push(steam.name);
+    }
+    return ['appliances', 'Appliances', busy.length ? busy.join(', ') : 'All idle', lines];
   }
 
   _networkSummary() {
@@ -734,7 +782,7 @@ class LaptopDashboardCard extends HTMLElement {
     </section>` : '';
 
     const legendItems = devices.map((d) => ({ name: d.name, colour: d.colour }));
-    const body = `<div class="grid"><div class="grid full" style="--min: 220px">${cards}</div>${rateCard}
+    const body = `<div class="grid"><div class="grid full" style="--min: 150px">${cards}</div>${rateCard}
       ${this._stackBars('energyDays', 'Per day, last 31 days', devices, 'Today so far on the right. A steady ~0.1 kWh a day is a device on standby.', legendItems, rate)}
       ${this._stackBars('energyMonths', 'Per month', devices, 'The current month is so far.', legendItems, rate, true)}
       <section class="card full quiet" aria-label="Whole house"><h2>No whole-house figure</h2>
@@ -797,11 +845,156 @@ class LaptopDashboardCard extends HTMLElement {
     }).join('');
     const legendItems = machines.map((m) => ({ name: m.name, colour: m.colour }));
     const body = `<div class="grid">${cards}
+      ${this._steamCard()}
       ${this._stackBars('energyDays', 'Energy per day, last 31 days', machines, 'A bar is a day the machine ran; the vacuum’s small steady bar is its dock.', legendItems)}
       ${this._stackBars('energyMonths', 'Energy per month', machines, 'The current month is so far.', legendItems, null, true)}
     </div>`;
-    const busy = machines.filter((m) => !/^(idle|docked|finished|off)/i.test(this._value(m.status_entity) ?? 'idle'));
-    return ['Appliances', busy.length ? esc(busy.map((m) => `${m.name}: ${this._value(m.status_entity)}`).join(' · ')) : 'All idle', '', body];
+    const busy = machines.filter((m) => !/^(idle|docked|finished|off)/i.test(this._value(m.status_entity) ?? 'idle'))
+      .map((m) => `${m.name}: ${this._value(m.status_entity)}`);
+    const steam = this._steamNow();
+    if (steam?.on) busy.push(`${steam.name}: on`);
+    return ['Appliances', busy.length ? esc(busy.join(' · ')) : 'All idle', '', body];
+  }
+
+  // ───────────────────────── steam machine ────────────────────────
+
+  _steamNow() {
+    const st = this._config.steam;
+    if (!st) return null;
+    const power = num(this._value(st.power_entity));
+    return { name: st.name || 'Steam Machine', power, on: power !== null && power >= (st.on_above ?? 5) };
+  }
+
+  _steamCard() {
+    const st = this._config.steam;
+    if (!st) return '';
+    const now = this._steamNow();
+    const threshold = st.on_above ?? 5;
+    const data = this._data.steam7?.value;
+    // A run is consecutive 5-minute slots averaging at least the threshold.
+    const runs = [];
+    for (const [t, mean] of data?.points || []) {
+      if (mean === null || mean < threshold) continue;
+      const last = runs.at(-1);
+      if (last && t - last.to < 60000) last.to = t + 300000;
+      else runs.push({ from: t, to: t + 300000 });
+    }
+    // Statistics lag by up to 5 minutes: stretch the latest run to now while on.
+    if (now.on) {
+      const last = runs.at(-1);
+      if (last && Date.now() - last.to < 15 * 60000) last.to = Date.now();
+      else runs.push({ from: Date.now(), to: Date.now() });
+    } else if (runs.at(-1)?.to > Date.now()) runs.at(-1).to = Date.now();
+    const overlap = (r, a, b) => Math.max(0, Math.min(r.to, b) - Math.max(r.from, a));
+    const today = startOfDay(new Date());
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const from = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6 + i).getTime();
+      const to = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 5 + i).getTime();
+      return { from, to, runs: runs.filter((r) => overlap(r, from, to) > 0),
+        ms: runs.reduce((sum, r) => sum + overlap(r, from, to), 0) };
+    });
+    const weekMs = days.reduce((sum, d) => sum + d.ms, 0);
+    const current = now.on ? runs.at(-1) : null;
+    const last = now.on ? null : runs.at(-1);
+    const status = current ? `On since ${hhmm(new Date(current.from))} · ${duration(Date.now() - current.from)}`
+      : last ? `Last on ${when(new Date(last.to).toISOString())}` : data ? 'Not on in the last 7 days' : '';
+    const month = this._data.energyMonths?.value?.series[st.energy_entity]?.change.at(-1);
+    const marker = ((Date.now() - today.getTime()) / 86400000) * 100;
+    const timeline = data ? days.map((d, i) => `<div class="day ${i === 6 ? 'today' : ''}">
+        <span class="day-name">${new Date(d.from).toLocaleDateString('en-GB', { weekday: 'short' })}</span>
+        <div class="week-bar">
+          ${d.runs.map((r) => {
+            const left = ((Math.max(r.from, d.from) - d.from) / (d.to - d.from)) * 100;
+            const width = (overlap(r, d.from, d.to) / (d.to - d.from)) * 100;
+            return `<div class="seg" style="left:${left}%;width:${Math.max(width, 0.4)}%"
+              title="${esc(`${hhmm(new Date(Math.max(r.from, d.from)))}–${hhmm(new Date(Math.min(r.to, d.to)))}`)}"></div>`;
+          }).join('')}
+          ${i === 6 ? `<div class="now" style="left:${marker}%"></div>` : ''}
+        </div>
+        <span class="day-total">${d.ms ? esc(duration(d.ms)) : '—'}</span>
+      </div>`).join('') : this._chartState('steam7');
+    return `<section class="card full" aria-label="${esc(now.name)}">
+      <div class="title-row"><h2>${esc(now.name)}</h2><span class="pill ${now.on ? 'on' : ''}">${now.on ? 'On' : 'Off'}</span></div>
+      <div class="steam-top">
+        <div class="stack"><div class="big">${now.on ? `${now.power.toFixed(0)} W` : 'Off'}</div><div>${esc(status)}</div></div>
+        <div class="steam-stats">
+          ${stat(data ? duration(days[6].ms) || '0 min' : '—', '', 'on today')}
+          ${stat(data ? duration(weekMs) || '0 min' : '—', '', 'last 7 days')}
+          ${stat(month === undefined ? '—' : kwh(month), 'kWh', 'this month')}
+        </div>
+      </div>
+      <h3>Last 7 days</h3>
+      ${timeline}
+      <div class="hours steam-hours"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+      <div class="note">${esc(st.note || '')} On means at least ${threshold} W; in standby it draws under 2 W.</div>
+    </section>`;
+  }
+
+  // ─────────────────────────── phone home ─────────────────────────
+
+  _phoneHome() {
+    const c = this._config;
+    const h = c.heating;
+    const s = this._heatingState();
+    const wx = this._state(c.weather_entity);
+    const temp = wx ? num(wx.attributes.temperature) : null;
+    const condition = wx ? wx.state.replace('partlycloudy', 'partly cloudy').replace(/-/g, ' ') : '';
+    const aside = temp === null ? '' : `<div class="when"><strong>${temp.toFixed(1)}°</strong> ${esc(condition)}</div>`;
+
+    const heating = `<section class="card" aria-label="Heating">
+      <div class="title-row"><a class="title-link" href="${esc(pageUrl('heating'))}" data-action="nav" data-page="heating">Heating ›</a>
+        <span class="note">Bedroom ${esc(deg(this._value(h.reference_entity)))}${s.boiler ? ` · boiler ${esc(s.boiler)}` : ''}</span></div>
+      ${this._heatControl(false, this._todayBar(s.setback))}
+    </section>`;
+
+    const lights = (c.lights || []).length ? `<h2 class="section">Lights</h2>
+      <div class="light-grid">${c.lights.map((l) => lightButton(this._state(l.entity), l)).join('')}</div>` : '';
+
+    const rooms = `<h2 class="section">Rooms</h2>
+      <div class="card rooms3">${(c.rooms || []).map((r) => {
+        const hum = num(this._value(r.humidity_entity));
+        return `<div class="room"><span class="note">${esc(r.name)}</span><span class="room-temp">${esc(deg(this._value(r.temperature_entity)))}</span>
+          <span class="note">${hum === null ? '' : `${hum.toFixed(0)}%`}</span></div>`;
+      }).join('')}</div>`;
+
+    const lightsOn = (c.lights || []).filter((l) => this._state(l.entity)?.state === 'on').length;
+    const lightsDown = (c.lights || []).filter((l) => (this._state(l.entity)?.state ?? 'unavailable') === 'unavailable').length;
+    const rows = [this._catSummary(), this._energySummary(), this._appliancesSummary(), this._networkSummary()]
+      .map(([page, title, value, lines]) => [page, title, lines.filter(Boolean).slice(page === 'cat' ? 1 : 0).join(' · '), value]);
+    rows.push(['lights', 'Lights', `${lightsOn} on${lightsDown ? ` · ${lightsDown} offline` : ''}`, '']);
+    const house = `<h2 class="section">House</h2>
+      <div class="card house" role="navigation" aria-label="Pages">${rows.map(([page, title, detail, value]) => `<a class="house-row"
+        href="${esc(pageUrl(page))}" data-action="nav" data-page="${page}">${ICON}
+        <span class="stack grow"><span class="strong">${esc(title)}</span><span class="note clip">${esc(detail)}</span></span>
+        <span class="strong">${esc(value)}</span><span class="muted" aria-hidden="true">›</span></a>`).join('')}</div>`;
+
+    return ['Home', this._issues(), aside, `<div class="column">${heating}${lights}${rooms}${house}</div>`];
+  }
+
+  // Today's blocks as one bar, with the hour each starts under it.
+  _todayBar(setback) {
+    const week = this._schedule?.week;
+    if (!week) return '';
+    const now = new Date();
+    const parts = dayParts(week[WEEKDAYS[now.getDay()]] || [], setback);
+    const peak = Math.max(...parts.map((p) => p.target ?? 0));
+    const edges = [...new Set(parts.flatMap((p) => [p.from, p.to]))];
+    const marker = ((now.getHours() * 60 + now.getMinutes()) / 1440) * 100;
+    return `<div class="today-bar" aria-label="Today's schedule">
+      <div class="week-bar">
+        ${parts.map((p) => {
+          const width = ((p.to - p.from) / 1440) * 100;
+          const tone = !p.on ? '' : p.target === peak ? 'warm' : 'mild';
+          return `<div class="block ${tone}" style="width:${width}%">${width > 9 && p.target !== null ? `${p.target}°` : ''}</div>`;
+        }).join('')}
+        <div class="now" style="left:${marker}%"></div>
+      </div>
+      <div class="edges">${edges.map((m) => {
+        const text = clock(m).endsWith(':00') ? clock(m).slice(0, 2) : clock(m);
+        const shift = m === 0 ? '0' : m >= 1440 ? '-100%' : '-50%';
+        return `<span style="left:${(m / 1440) * 100}%;transform:translateX(${shift})">${text}</span>`;
+      }).join('')}</div>
+    </div>`;
   }
 
   // ──────────────────────────── network ───────────────────────────
@@ -828,9 +1021,9 @@ class LaptopDashboardCard extends HTMLElement {
       return `<div class="switch-row tall"><span class="stack"><span>${esc(w.name)}</span><span class="small muted">${esc(w.note || '')}</span></span>
         ${s && s.state !== 'unavailable' ? switchButton(s.state === 'on', w.entity, w.name) : '<span class="muted">offline</span>'}</div>`;
     }).join('');
-    const body = `<div class="grid" style="--min: 240px">
+    const body = `<div class="grid"><div class="grid full" style="--min: 150px">
       ${stats.map(([label, value, note]) => `<section class="card" aria-label="${esc(label)}"><div class="note">${esc(label)}</div>
-        <div class="mid">${esc(value)}</div><div class="note">${esc(note)}</div></section>`).join('')}
+        <div class="mid">${esc(value)}</div><div class="note">${esc(note)}</div></section>`).join('')}</div>
       ${chart}
       <section class="card full" aria-label="AdGuard settings">
         <div class="title-row wrap-row"><h2>AdGuard settings</h2>
@@ -884,6 +1077,15 @@ class LaptopDashboardCard extends HTMLElement {
 }
 
 // ───────────────────────────── helpers ─────────────────────────────
+
+// "1 h 20 min", "35 min"; '' for nothing.
+function duration(ms) {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 1) return '';
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  return minutes % 60 ? `${h} h ${minutes % 60} min` : `${h} h`;
+}
 
 const dayFraction = () => {
   const now = new Date();
@@ -1192,6 +1394,53 @@ const STYLES = `
   .block.warm { background: #F2C4A3; color: ${C.ink}; }
   .week-bar .now { position: absolute; top: 0; bottom: 0; width: 2px; background: ${C.ink}; }
   .hours { display: flex; justify-content: space-between; margin-left: 58px; font-size: 12px; color: ${C.muted}; }
+
+  h3 { margin: 6px 0 0; font-size: 15px; font-weight: 600; }
+  .steam-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 40px; }
+  .steam-stats { display: flex; flex-wrap: wrap; gap: 12px 40px; }
+  .seg { position: absolute; top: 0; bottom: 0; background: ${C.accent}; border-radius: 3px; }
+  .day-total { width: 84px; text-align: right; font-size: 14px; color: ${C.muted}; white-space: nowrap; }
+  .steam-hours { margin-right: 98px; }
+
+  /* Phone: no sidebar, one column, the phone design's Home. */
+  .phone .wrap { display: block; padding: 20px 16px 40px; }
+  .phone main { gap: 16px; }
+  .phone h1 { font-size: 30px; }
+  .phone .head { align-items: flex-start; flex-direction: column; gap: 4px; padding: 0 4px; }
+  .phone .card { padding: 16px; }
+  .phone .big { font-size: 40px; }
+  .phone .plot, .phone .y-axis { height: 180px; }
+  .phone .y-axis { width: 36px; }
+  .phone .bars { gap: 2px; }
+  .phone .bars.spaced { gap: 6px; }
+  .phone .bar-labels.even { gap: 6px; }
+  .phone .stepper.big .target-value { font-size: 56px; }
+  .phone .day { gap: 8px; }
+  .phone .week-bar .block { padding-left: 4px; font-size: 11px; }
+  .phone .mid { font-size: 26px; }
+  .phone .day-name { width: 36px; }
+  .phone .hours { margin-left: 44px; }
+  .phone .day-total { width: 64px; font-size: 13px; }
+  .phone .steam-hours { margin-right: 72px; }
+  .back { display: inline-flex; align-items: center; min-height: 44px; font-size: 16px; font-weight: 600; margin: -8px 0 0; }
+  .column { display: flex; flex-direction: column; gap: 12px; }
+  .section { margin: 8px 4px 0; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: ${C.muted}; }
+  .title-link { font-size: 17px; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+  .today-bar .week-bar { height: 28px; }
+  .edges { position: relative; height: 16px; margin-top: 4px; font-size: 12px; color: ${C.muted}; }
+  .edges span { position: absolute; }
+  .light-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .light-grid .light { min-height: 52px; border-radius: 14px; }
+  .rooms3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 12px; padding: 4px 16px; }
+  .rooms3 .room { display: flex; flex-direction: column; gap: 2px; padding: 12px 0; }
+  .rooms3 .room-temp { font-size: 24px; font-weight: 600; }
+  .house { display: block; padding: 0; }
+  .house-row { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 0 16px; color: ${C.ink}; border-top: 1px solid ${C.line}; }
+  .house-row:first-child { border-top: none; }
+  .house-row:hover { color: ${C.ink}; background: ${C.faint}; }
+  .house-row svg { color: ${C.accent}; flex: none; }
+  .grow { flex: 1; min-width: 0; }
+  .clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   @media (max-width: 700px) {
     .wrap { padding: 16px; }

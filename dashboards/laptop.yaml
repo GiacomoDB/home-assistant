@@ -5,10 +5,7 @@
 # opens normally, with HA's view tabs above the card.
 #
 # A separate dashboard from home.yaml and tablet.yaml, which stay as they are.
-#
-# Every view gets the same config through the &laptop anchor below, so any
-# page can show a summary of another. Entities sit under keys ending in
-# `_entity` (or `entity`), which `ha.py deploy --dry-run` checks against HA.
+# The entities are in house.yaml, shared with phone.yaml.
 
 views:
   - title: Home
@@ -17,174 +14,7 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: home
-        <<: &laptop
-          weather_entity: weather.forecast_home
-
-          heating:
-            climate_entity: climate.heating
-            status_entity: sensor.heating_status
-            target_entity: sensor.heating_desired_target
-            reference_entity: sensor.heating_reference_temperature
-            setpoint_entity: sensor.heating_computed_setpoint
-            bias_entity: sensor.heating_bias
-            manual_entity: input_number.heating_manual_target
-            boost_entity: timer.heating_boost
-            resume_entity: script.heating_resume
-            schedule_entity: schedule.heating
-            setback_entity: input_number.heating_setback
-            hold_entity: input_datetime.heating_hold_until
-            pause_entity: input_datetime.heating_override_until
-            live_entity: input_boolean.heating_controller_enabled
-
-          # Same rooms and sensors as climate-table-card.yaml.
-          rooms:
-            - name: Living room
-              temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature_4
-              humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity_4
-            - name: Kitchen
-              temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature
-              humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity
-            - name: Bedroom
-              temperature_entity: sensor.alpstuga_air_quality_monitor_temperature
-              humidity_entity: sensor.alpstuga_air_quality_monitor_humidity
-            - name: Babyroom
-              temperature_entity: sensor.babyroom_babyroom_temperature
-              humidity_entity: sensor.babyroom_babyroom_humidity
-            - name: Bath
-              temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature_5
-              humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity_5
-            - name: Hall
-              temperature_entity: sensor.timmerflotte_temp_hmd_sensor_temperature_3
-              humidity_entity: sensor.timmerflotte_temp_hmd_sensor_humidity_3
-
-          cat:
-            fountain_level_entity: sensor.dockstream_smart_fountain_remaining_water_2
-            fountain_today_entity: sensor.dockstream_smart_fountain_today_s_water_consumption
-            fountain_yesterday_entity: sensor.dockstream_smart_fountain_yesterday_s_water_consumption
-            sessions_today_entity: sensor.dockstream_smart_fountain_today_s_total_drinking_times
-            sessions_yesterday_entity: sensor.dockstream_smart_fountain_yesterday_s_total_drinking_times
-            average_drink_entity: sensor.dockstream_smart_fountain_today_s_average_drinking_time
-            drink_time_entity: sensor.dockstream_smart_fountain_today_s_total_drinking_time
-            litter_visits_entity: sensor.litter_box_visits_today
-            litter_occupancy_entity: binary_sensor.cat_in_litter_box
-            refill_below: 25
-
-          # Only what measures itself: there's no smart meter, and the Glow
-          # feed in HA doesn't match the appliances, so there's no house total.
-          energy:
-            rate_entity: input_number.electricity_unit_rate
-            devices:
-              - name: Washer
-                energy_entity: sensor.washing_machine_energy
-                power_entity: sensor.washing_machine_power
-                colour: "#2563B8"
-              - name: Dryer
-                energy_entity: sensor.tumble_dryer_energy
-                power_entity: sensor.tumble_dryer_power
-                colour: "#B4530F"
-              - name: Vacuum
-                energy_entity: sensor.robot_vacuum_energy
-                power_entity: sensor.robot_vacuum_power
-                colour: "#0B6E78"
-              - name: Grillplats plug
-                energy_entity: sensor.grillplats_plug_energy
-                power_entity: sensor.grillplats_plug_power
-                colour: "#8A6FB5"
-
-          appliances:
-            machines:
-              - name: Washer
-                one: wash
-                many: washes
-                colour: "#2563B8"
-                status_entity: sensor.washing_machine_status
-                cycles_entity: sensor.washing_machine_cycles
-                summary_entity: sensor.washing_machine_last_cycle_summary
-                energy_entity: sensor.washing_machine_energy
-                toggles:
-                  - name: Bubble soak
-                    entity: switch.washing_machine_bubble_soak
-              - name: Dryer
-                one: dry
-                many: dries
-                colour: "#B4530F"
-                status_entity: sensor.tumble_dryer_status
-                cycles_entity: sensor.tumble_dryer_cycles
-                summary_entity: sensor.tumble_dryer_last_cycle_summary
-                energy_entity: sensor.tumble_dryer_energy
-                toggles:
-                  - name: Wrinkle prevent
-                    entity: switch.tumble_dryer_wrinkle_prevent
-              - name: Vacuum
-                one: run
-                many: runs
-                colour: "#0B6E78"
-                vacuum_entity: vacuum.robot_vacuum
-                status_entity: sensor.robot_vacuum_status
-                cycles_entity: sensor.robot_vacuum_runs
-                summary_entity: sensor.robot_vacuum_last_run
-                energy_entity: sensor.robot_vacuum_energy
-                toggles:
-                  - name: Do not disturb
-                    entity: switch.robot_vacuum_do_not_disturb
-
-          network:
-            queries_entity: sensor.adguard_home_dns_queries
-            blocked_entity: sensor.adguard_home_dns_queries_blocked
-            ratio_entity: sensor.adguard_home_dns_queries_blocked_ratio
-            speed_entity: sensor.adguard_home_average_processing_speed
-            protection_entity: switch.adguard_home_protection
-            switches:
-              - name: Protection
-                note: "Master switch: off lets everything through"
-                entity: switch.adguard_home_protection
-              - name: Filtering
-                note: The block lists
-                entity: switch.adguard_home_filtering
-              - name: Query log
-                note: Keeps the per-device history in AdGuard
-                entity: switch.adguard_home_query_log
-              - name: Safe browsing
-                note: Blocks known malware and phishing
-                entity: switch.adguard_home_safe_browsing
-              - name: Safe search
-                note: Forces safe results on search engines
-                entity: switch.adguard_home_safe_search
-              - name: Parental control
-                note: Blocks adult sites
-                entity: switch.adguard_home_parental_control
-
-          # `fix` shows on the Lights page while a light is offline.
-          lights:
-            - name: Big light
-              entity: switch.big_light
-              kind: TP-Link plug
-              fix: &tplink "If the plug has power, HA has lost its sign-in: Settings → Devices & services → TP-Link → Reconfigure."
-            - name: Tree
-              entity: switch.tree
-              kind: TP-Link plug
-              fix: *tplink
-            - name: Entrance
-              entity: switch.kettelinch
-              kind: TP-Link plug
-              fix: *tplink
-            - name: Lampada Cucina
-              entity: light.kajplats_e27_ws_globe_1521lm
-              kind: IKEA bulb (Matter)
-              fix: &bulb "Usually switched off at the wall. Switch it back on and HA finds it again within a minute or two."
-            - name: Lampadina
-              entity: switch.lampadina
-              kind: TP-Link plug
-              fix: *tplink
-            - name: Badjour
-              entity: light.kajplats_e14_ws_globe_806lm
-              kind: IKEA bulb (Matter)
-              fix: *bulb
-
-          plugs:
-            - name: Grillplats plug
-              entity: switch.grillplats_plug
-              power_entity: sensor.grillplats_plug_power
+        house: &house !include house.yaml
 
   - title: Heating
     path: heating
@@ -192,7 +22,7 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: heating
-        <<: *laptop
+        house: *house
 
   - title: Cat
     path: cat
@@ -200,7 +30,7 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: cat
-        <<: *laptop
+        house: *house
 
   - title: Energy
     path: energy
@@ -208,7 +38,7 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: energy
-        <<: *laptop
+        house: *house
 
   - title: Appliances
     path: appliances
@@ -216,7 +46,7 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: appliances
-        <<: *laptop
+        house: *house
 
   - title: Network
     path: network
@@ -224,7 +54,7 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: network
-        <<: *laptop
+        house: *house
 
   - title: Lights
     path: lights
@@ -232,4 +62,4 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: lights
-        <<: *laptop
+        house: *house

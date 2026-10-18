@@ -36,3 +36,9 @@
   url_path: dashboard-laptop
   title: Laptop
   icon: mdi:circle
+
+# The phone: the same seven pages in one column, with a phone Home.
+- file: phone.yaml
+  url_path: dashboard-phone
+  title: Phone
+  icon: mdi:circle

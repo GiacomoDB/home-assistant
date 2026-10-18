@@ -1,0 +1,72 @@
+# The phone dashboard: the laptop's seven pages with `layout: phone`. Home
+# follows the phone design (heating with today's schedule, lights, rooms, a
+# list of the other pages); every other page is the laptop's in one column
+# with a "‹ Home" link back. Open /dashboard-phone/home?kiosk, or make it the
+# default dashboard in the companion app (Settings → Companion app).
+#
+# A separate dashboard from home.yaml, which stays as it is. The entities are
+# in house.yaml, shared with laptop.yaml.
+
+views:
+  - title: Home
+    path: home
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: home
+        layout: phone
+        house: &house !include house.yaml
+
+  - title: Heating
+    path: heating
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: heating
+        layout: phone
+        house: *house
+
+  - title: Cat
+    path: cat
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: cat
+        layout: phone
+        house: *house
+
+  - title: Energy
+    path: energy
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: energy
+        layout: phone
+        house: *house
+
+  - title: Appliances
+    path: appliances
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: appliances
+        layout: phone
+        house: *house
+
+  - title: Network
+    path: network
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: network
+        layout: phone
+        house: *house
+
+  - title: Lights
+    path: lights
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: lights
+        layout: phone
+        house: *house
