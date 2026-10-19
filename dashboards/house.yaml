@@ -115,6 +115,13 @@ appliances:
         - name: Do not disturb
           entity: switch.robot_vacuum_do_not_disturb
 
+# The Mesh page: every Matter device over Thread comes from HA itself; a
+# relay HA doesn't know shows by its Thread address, so it's named here. The
+# Aqara hub is the Thread network's border router (AqaraHome-baab).
+thread:
+  names:
+    "56:6e:83:70:c0:0f:8e:0a": Aqara hub
+
 network:
   # The router (ICOTERA, through the UPnP integration). The speeds are the
   # traffic it's passing, not the line's top speed. Uptime is disabled by the

@@ -1,4 +1,4 @@
-# The laptop dashboard: seven pages for checking and changing things at a
+# The laptop dashboard: eight pages for checking and changing things at a
 # desk, each a panel view holding one www/laptop-dashboard-card.js. The card
 # draws its own sidebar between the pages, so open it as
 # /dashboard-laptop/home?kiosk to hide HA's header too; without ?kiosk it
@@ -54,6 +54,14 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: network
+        house: *house
+
+  - title: Mesh
+    path: mesh
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: mesh
         house: *house
 
   - title: Lights

@@ -1,4 +1,4 @@
-# The phone dashboard: the laptop's seven pages with `layout: phone`. Home
+# The phone dashboard: the laptop's eight pages with `layout: phone`. Home
 # follows the phone design (heating with today's schedule, lights, rooms, a
 # list of the other pages); every other page is the laptop's in one column
 # with a "‹ Home" link back. Open /dashboard-phone/home?kiosk, or make it the
@@ -59,6 +59,15 @@ views:
     cards:
       - type: custom:laptop-dashboard-card
         page: network
+        layout: phone
+        house: *house
+
+  - title: Mesh
+    path: mesh
+    type: panel
+    cards:
+      - type: custom:laptop-dashboard-card
+        page: mesh
         layout: phone
         house: *house
 

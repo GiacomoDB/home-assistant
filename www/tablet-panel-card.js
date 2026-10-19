@@ -250,6 +250,13 @@ class TabletPanelCard extends HTMLElement {
       .map((s) => s.attributes.friendly_name || s.entity_id);
     const items = [];
     if (leaks.length) items.push([`Water leak`, leaks.join(', ')]);
+    // Battery devices not reporting, by the rule of attention-card.yaml (the feeder aside).
+    const sensors = Object.values(this._hass.states)
+      .filter((s) => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery'
+        && !`${s.entity_id} ${s.attributes.friendly_name || ''}`.toLowerCase().includes('granary')
+        && Number.isNaN(parseFloat(s.state)))
+      .map((s) => (s.attributes.friendly_name || s.entity_id).replace(/ Battery$/, '').replace(/ Sensor$/, ''));
+    if (sensors.length) items.push([`${sensors.length} sensor${sensors.length > 1 ? 's' : ''} offline`, sensors.join(', ')]);
     // The router: 'off' is the line down; no answer for 5 min is the router itself.
     const wan = this._state(this._config.internet_entity);
     if (this._config.internet_entity) {

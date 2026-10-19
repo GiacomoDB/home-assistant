@@ -79,7 +79,9 @@ box, today against yesterday, 31 days of water, sessions and visits),
 **Energy** (kWh per measured device by day and month, and a unit rate box that
 turns them into pounds), **Appliances** (washer, dryer and vacuum with their
 switches and Start cleaning, the Steam Machine, energy per day and month), **Network** (the
-internet connection, then AdGuard counts, 24 hours of queries, its switches) and **Lights** (each light with
+internet connection, then AdGuard counts, 24 hours of queries, its switches),
+**Mesh** (the Thread network: which devices relay, how good each link is, and
+which battery device hangs off which relay) and **Lights** (each light with
 why it's offline and what to do, brightness, plugs, all off).
 
 Each page is a panel view holding `www/laptop-dashboard-card.js` with its
@@ -101,6 +103,21 @@ the integration leaves disabled until it's enabled under the device). The
 speeds are the house's traffic, not the line's top speed. The line down, or the
 router not answering for 5 minutes, shows in the alerts on all three
 dashboards; the tablet reads it from `internet_entity`.
+
+The **Mesh** page reads HA's Matter diagnostics for every Thread device (the
+same JSON as *Download diagnostics*), so it needs an **admin** login; anyone
+else sees a note instead. From each device's neighbour table it draws the
+relays and the links between them (signal, share of messages resent) and puts
+each battery device under the relay it uses, with its restarts, its offline
+spells in the last 7 days (from history) and its battery. A relay HA doesn't
+know, like the Aqara hub, is named by Thread address under `thread.names` in
+`house.yaml`. Battery devices refresh their link details rarely, so those can
+be hours old.
+
+Offline sensors are in the alerts on all three dashboards, by the rule of the
+old dashboard's `attention-card.yaml`: a battery sensor without a number (the
+Granary feeder aside). The phone notification for a dropped Thread sensor is
+the UI automation *Alert when a Thread sensor goes unavailable*, not this repo.
 
 The **Steam Machine** (the gaming and media-centre PC) has no integration:
 its GRILLPLATS plug's power says when it's on (5 W or more; standby is under

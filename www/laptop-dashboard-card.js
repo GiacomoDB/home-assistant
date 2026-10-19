@@ -25,6 +25,11 @@
 // The Steam Machine has no integration; its plug's power says when it's on.
 // Its plug switch is left out on purpose: off would cut power mid-session.
 //
+// The Mesh page reads HA's Matter diagnostics for every Thread device (the same
+// JSON as Download diagnostics), which only an admin login may fetch; anyone
+// else gets a note instead. Neighbour tables there name devices by Thread
+// address, matched against each device's own address.
+//
 // The page's own links navigate inside HA, keeping the query string, so
 // /dashboard-laptop/home?kiosk stays in kiosk mode from page to page.
 
@@ -39,7 +44,7 @@ const C = {
 const ROOM_COLOURS = ['#B4530F', '#2563B8', '#0B6E78', '#8A6FB5', '#C0882B', '#5B8C3A'];
 
 const PAGES = [['home', 'Home'], ['heating', 'Heating'], ['cat', 'Cat'], ['energy', 'Energy'],
-  ['appliances', 'Appliances'], ['network', 'Network'], ['lights', 'Lights']];
+  ['appliances', 'Appliances'], ['network', 'Network'], ['mesh', 'Mesh'], ['lights', 'Lights']];
 
 const BOOST_TARGET = 25;
 const STEP_DELAY_MS = 1200;
@@ -48,6 +53,9 @@ const STATS_TTL = 30 * 60000;
 const ROUTER_GRACE_MS = 5 * 60000;
 // Router data rates to Mbit/s, by the sensor's unit.
 const RATE_TO_MBIT = { 'bit/s': 1e-6, 'kbit/s': 1e-3, 'Mbit/s': 1, 'B/s': 8e-6, 'kB/s': 8e-3, 'KiB/s': 8192e-6, 'MB/s': 8, 'MiB/s': 8.388608 };
+// Thread link quality (LQI 0-3) as a word and a colour.
+const LINK = [['None', '#9AA3AB'], ['Poor', '#B4530F'], ['Fair', '#C0882B'], ['Good', '#2E7D4F']];
+const ROLES = { 2: 'Battery sensor', 3: 'Powered device', 4: 'Can relay', 5: 'Relay', 6: 'Leader' };
 const DAYS = 31;
 const MONTHS = 11;
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -213,6 +221,10 @@ class LaptopDashboardCard extends HTMLElement {
       r.push({ name: 'traffic24', kind: 'short', hours: 24, ids: [net.download_entity, net.upload_entity] });
       r.push({ name: 'wan7', kind: 'states', hours: 7 * 24, ids: [net.status_entity] });
     }
+    if (page === 'mesh') {
+      r.push({ name: 'mesh', kind: 'mesh', ids: ['matter'] });
+      r.push({ name: 'mesh7', kind: 'states', hours: 7 * 24, ids: this._meshDevices().map((d) => d.entity) });
+    }
     return r.map((req) => ({ ...req, ids: req.ids.filter(Boolean) })).filter((req) => req.ids.length);
   }
 
@@ -250,6 +262,17 @@ class LaptopDashboardCard extends HTMLElement {
         out[id] = (result[id] || []).map((p) => [(p.lu ?? p.lc) * 1000, req.kind === 'states' ? p.s : num(p.s)]);
       }
       return { from: start.getTime(), to: now.getTime(), series: out };
+    }
+    if (req.kind === 'mesh') {
+      const nodes = await Promise.all(this._meshDevices().map(async (d) => {
+        try {
+          const diag = await this._hass.callApi('GET', `diagnostics/config_entry/${d.entry}/device/${d.id}`);
+          return { ...d, node: diag?.data?.node || null };
+        } catch (err) {
+          return { ...d, node: null, denied: [401, 403].includes(err?.status_code ?? err?.status) };
+        }
+      }));
+      return { nodes };
     }
     if (req.kind === 'short') {
       // 5-minute means, which HA keeps for about 10 days: light enough to
@@ -571,6 +594,11 @@ class LaptopDashboardCard extends HTMLElement {
       .map((s) => s.attributes.friendly_name || s.entity_id);
     const issues = [];
     if (leaks.length) issues.push(`<strong class="alert-text">Water leak: ${esc(leaks.join(', '))}</strong>`);
+    const sensors = offlineSensors(this._hass);
+    if (sensors.length) {
+      issues.push(`<a class="alert-text" href="${esc(pageUrl('mesh'))}" data-action="nav" data-page="mesh"
+        title="${esc(sensors.join(', '))}">${plural(sensors.length, 'sensor', 'sensors')} offline</a>`);
+    }
     const internet = this._internetNow();
     if (internet?.problem) {
       issues.push(`<a class="alert-text" href="${esc(pageUrl('network'))}" data-action="nav" data-page="network">${esc(internet.problem.toLowerCase())}</a>`);
@@ -984,6 +1012,8 @@ class LaptopDashboardCard extends HTMLElement {
     const rows = [this._catSummary(), this._energySummary(), this._appliancesSummary(), this._networkSummary()]
       .map(([page, title, value, lines]) => [page, title, lines.filter(Boolean).slice(page === 'cat' ? 1 : 0).join(' · '), value]);
     rows.push(['lights', 'Lights', `${lightsOn} on${lightsDown ? ` · ${lightsDown} offline` : ''}`, '']);
+    const sensorsDown = offlineSensors(this._hass).length;
+    rows.push(['mesh', 'Mesh', sensorsDown ? `${plural(sensorsDown, 'sensor', 'sensors')} offline` : 'All sensors reporting', '']);
     const house = `<h2 class="section">House</h2>
       <div class="card house" role="navigation" aria-label="Pages">${rows.map(([page, title, detail, value]) => `<a class="house-row"
         href="${esc(pageUrl(page))}" data-action="nav" data-page="${page}">${ICON}
@@ -1142,6 +1172,180 @@ class LaptopDashboardCard extends HTMLElement {
     </section>`;
   }
 
+  // ───────────────────────────── mesh ─────────────────────────────
+
+  // HA's Matter devices, each with the entity whose history says when it was offline.
+  _meshDevices() {
+    const entities = Object.values(this._hass.entities || {});
+    return Object.values(this._hass.devices || {})
+      .filter((d) => (d.identifiers || []).some(([domain]) => domain === 'matter'))
+      .map((d) => {
+        const own = entities.filter((e) => e.device_id === d.id && this._hass.states[e.entity_id]).map((e) => e.entity_id);
+        const battery = own.find((id) => id.startsWith('sensor.') && this._hass.states[id].attributes.device_class === 'battery'
+          && this._hass.states[id].attributes.unit_of_measurement === '%');
+        // A battery level changes rarely, so its history is the lightest to fetch.
+        const entity = battery || own.find((id) => /^(switch|light|binary_sensor)\./.test(id)) || own.find((id) => id.startsWith('sensor.'));
+        return { id: d.id, entry: d.primary_config_entry || d.config_entries?.[0], name: d.name_by_user || d.name, battery, entity };
+      })
+      .filter((d) => d.entry && d.entity)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Relays, who hangs off which, and the link qualities, from the diagnostics.
+  _meshGraph() {
+    const data = this._data.mesh?.value;
+    if (!data) return null;
+    const named = Object.fromEntries(Object.entries(this._config.thread?.names || {}).map(([mac, name]) => [threadKey(mac), name]));
+    const nodes = data.nodes.map((d) => {
+      const a = d.node?.attributes || {};
+      const hw = (a['0/51/0'] || []).find((i) => i['7'] === 4)?.['4'];
+      return { ...d, key: hw ? threadKey(hw, true) : null, available: d.node?.available, role: a['0/53/1'],
+        reboots: a['0/51/1'], channel: a['0/53/0'], network: a['0/53/2'],
+        neighbours: (a['0/53/7'] || []).map((n) => ({ key: n['0'], rloc: n['2'], lqi: n['5'], rssi: n['6'],
+          fer: n['8'], child: n['13'], router: !n['13'] && n['10'] && n['11'] })) };
+    });
+    const byKey = new Map(nodes.filter((n) => n.key !== null).map((n) => [n.key, n]));
+    // Relays: anything reporting the role, and any neighbour seen relaying.
+    const relays = new Map(nodes.filter((n) => n.role >= 5).map((n) => [n.key, n]));
+    for (const n of nodes) {
+      for (const nb of n.neighbours) {
+        if (nb.router && !relays.has(nb.key)) {
+          relays.set(nb.key, byKey.get(nb.key) || { key: nb.key, name: named[nb.key] || `Relay ${nb.rloc >> 10}`, external: true, neighbours: [] });
+        }
+      }
+    }
+    // Links between relays, from whichever ends reported them; the worse end counts.
+    const links = new Map();
+    for (const r of relays.values()) {
+      for (const nb of r.neighbours) {
+        if (!nb.router || !relays.has(nb.key)) continue;
+        const id = [r.key, nb.key].sort().join('|');
+        const link = links.get(id) || { a: r.key, b: nb.key, sides: [] };
+        link.sides.push(nb);
+        links.set(id, link);
+      }
+    }
+    for (const link of links.values()) {
+      link.lqi = Math.min(...link.sides.map((s) => s.lqi));
+      link.rssi = Math.min(...link.sides.map((s) => s.rssi));
+      link.fer = Math.max(...link.sides.map((s) => s.fer));
+    }
+    // Everything else under its parent: its own table first, else the parent's child entry.
+    const children = new Map([...relays.keys()].map((k) => [k, []]));
+    const unplaced = [];
+    for (const n of nodes) {
+      if (relays.has(n.key)) continue;
+      let parent = n.neighbours.find((nb) => !nb.child && relays.has(nb.key));
+      let link = parent;
+      if (!parent) {
+        for (const r of relays.values()) {
+          const entry = r.neighbours.find((nb) => nb.child && nb.key === n.key);
+          if (entry) { parent = { key: r.key }; link = entry; break; }
+        }
+      }
+      if (parent) children.get(parent.key).push({ ...n, link });
+      else unplaced.push(n);
+    }
+    const order = [...relays.values()].sort((a, b) => (b.external ? 1 : 0) - (a.external ? 1 : 0)
+      || (b.role === 6 ? 1 : 0) - (a.role === 6 ? 1 : 0) || a.name.localeCompare(b.name));
+    return { nodes, relays: order, links: [...links.values()], children, unplaced,
+      denied: data.nodes.length > 0 && data.nodes.every((n) => n.denied) };
+  }
+
+  // Offline spells in the last 7 days for a device's entity.
+  _meshOffline(entity) {
+    const points = this._data.mesh7?.value?.series[entity];
+    if (!points) return null;
+    const spells = points.map(([t, state], i) => ({ state, from: t, to: points[i + 1]?.[0] ?? Date.now() }))
+      .filter((p) => p.state === 'unavailable' && p.to - p.from >= 60000);
+    return { count: spells.length, ms: spells.reduce((sum, p) => sum + p.to - p.from, 0) };
+  }
+
+  _mesh() {
+    const g = this._meshGraph();
+    if (!g) return ['Mesh', '', '', `<div class="grid"><section class="card full">${this._chartState('mesh')}</section></div>`];
+    if (g.denied) {
+      return ['Mesh', '', '', `<div class="grid"><section class="card full quiet"><h2>Needs an admin login</h2>
+        <p class="note">The mesh comes from Home Assistant’s Matter diagnostics, which only an administrator can read. Log in as one to see it.</p></section></div>`];
+    }
+    const leader = g.relays.find((r) => r.role === 6);
+    const any = g.nodes.find((n) => n.network);
+    const down = g.nodes.filter((n) => n.available === false || this._state(n.entity)?.state === 'unavailable');
+    const lede = [plural(g.nodes.length, 'Thread device', 'Thread devices'),
+      any ? `${any.network}, channel ${any.channel}` : '', leader ? `leader: ${leader.name}` : '',
+      down.length ? `${down.length} offline` : 'all online'].filter(Boolean).join(' · ');
+
+    // The backbone: relays round an ellipse, links coloured by quality.
+    const n = g.relays.length;
+    const pos = new Map(g.relays.map((r, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(n, 1);
+      return [r.key, n === 1 ? [50, 50] : [50 + 36 * Math.cos(angle), 50 + 34 * Math.sin(angle)]];
+    }));
+    const lines = g.links.map((l) => {
+      const [x1, y1] = pos.get(l.a); const [x2, y2] = pos.get(l.b);
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${LINK[l.lqi]?.[1] || C.grey}" stroke-width="${l.lqi >= 2 ? 3 : 2}"
+        ${l.lqi <= 1 ? 'stroke-dasharray="5 4"' : ''} vector-effect="non-scaling-stroke"></line>`;
+    }).join('');
+    const tags = g.links.map((l) => {
+      const [x1, y1] = pos.get(l.a); const [x2, y2] = pos.get(l.b);
+      // 40% along rather than halfway: crossing diagonals would stack their labels.
+      return `<span class="mesh-tag" style="left:${x1 + (x2 - x1) * 0.4}%;top:${y1 + (y2 - y1) * 0.4}%">${l.rssi} dBm${l.fer ? ` · ${l.fer}% lost` : ''}</span>`;
+    }).join('');
+    const pins = g.relays.map((r) => {
+      const [x, y] = pos.get(r.key);
+      const off = r.available === false || (r.entity && this._state(r.entity)?.state === 'unavailable');
+      return `<div class="mesh-node ${r.role === 6 ? 'leader' : ''} ${off ? 'off' : ''}" style="left:${x}%;top:${y}%">
+        <strong>${esc(r.name)}</strong><span>${off ? 'Offline' : r.role === 6 ? 'Leader' : r.external ? 'Relay, not in HA' : 'Relay'} · ${plural(g.children.get(r.key).length, 'device', 'devices')}</span></div>`;
+    }).join('');
+    // The same links as a list, for the phone, where the labels would pile up.
+    const nameOf = (key) => g.relays.find((r) => r.key === key)?.name || '';
+    const linkList = `<div class="mesh-links">${g.links.map((l) => `<div class="row"><span>${esc(nameOf(l.a))} – ${esc(nameOf(l.b))}</span>
+      <span class="right"><i class="dot" style="background:${LINK[l.lqi]?.[1] || C.grey}"></i>${esc(LINK[l.lqi]?.[0] || '')} · ${l.rssi} dBm${l.fer ? ` · ${l.fer}% lost` : ''}</span></div>`).join('')}</div>`;
+    const legendItems = [3, 2, 1].map((q) => ({ name: `${LINK[q][0]} link`, colour: LINK[q][1] }));
+    const map = `<figure class="card full"><div class="title-row wrap-row"><figcaption>Relays</figcaption>${legend(legendItems)}</div>
+      <div class="mesh-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>${tags}${pins}</div>${linkList}
+      <div class="note">Mains-powered devices relay for the battery ones. Signal is the weaker end of each link; lost is the share of messages that needed resending.</div>
+    </figure>`;
+
+    const offline = (d) => {
+      const spells = this._meshOffline(d.entity);
+      if (spells === null) return '…';
+      if (!spells.count) return 'never offline';
+      const long = spells.ms >= 48 * 3600000 ? `${Math.round(spells.ms / 86400000)} days` : duration(spells.ms) || '1 min';
+      return `offline ${plural(spells.count, 'time', 'times')}, ${long}`;
+    };
+    const muted = (text) => `<span class="muted">${text}</span>`;
+    const none = '<span class="muted empty">—</span>';
+    const row = (d, link) => {
+      const off = d.available === false || this._state(d.entity)?.state === 'unavailable';
+      const battery = num(this._value(d.battery));
+      const q = link ? LINK[link.lqi] : null;
+      return `<div class="mesh-row ${off ? 'off' : ''}">
+        <span class="stack"><span class="strong">${esc(d.name)}</span><span class="small muted">${esc(off ? 'Offline now' : ROLES[d.role] || 'No details')}</span></span>
+        ${q ? `<span><i class="dot" style="background:${q[1]}"></i>${esc(q[0])} ${muted(`${link.rssi} dBm`)}</span>` : none}
+        ${link?.fer !== undefined ? `<span>${link.fer}% ${muted('lost')}</span>` : none}
+        ${d.reboots !== undefined ? `<span>${d.reboots} ${muted('restarts')}</span>` : none}
+        <span>${esc(offline(d))} ${muted('in 7 d')}</span>
+        <span>${battery === null ? muted('mains') : `${battery.toFixed(0)}%`}</span>
+      </div>`;
+    };
+    const groups = g.relays.map((r) => {
+      const off = r.available === false || (r.entity && this._state(r.entity)?.state === 'unavailable');
+      const facts = r.external ? 'Not in Home Assistant: only what its neighbours report.'
+        : [off ? 'Offline now' : '', r.reboots !== undefined ? plural(r.reboots, 'restart', 'restarts') : '', `${offline(r)} in 7 days`].filter(Boolean).join(' · ');
+      return `<section class="card full" aria-label="${esc(r.name)}">
+        <div class="title-row"><h2>${esc(r.name)}</h2><span class="pill ${off ? 'bad' : r.role === 6 ? 'on' : ''}">${off ? 'Offline' : r.role === 6 ? 'Leader' : 'Relay'}</span></div>
+        <div class="note">${esc(facts)}</div>
+        ${g.children.get(r.key).map((c) => row(c, c.link)).join('') || '<div class="note">No battery devices connect through it.</div>'}
+      </section>`;
+    }).join('');
+    const unplaced = g.unplaced.length ? `<section class="card full quiet" aria-label="No link details">
+      <h2>No link details</h2><div class="note">Offline, or not yet reporting who it connects through.</div>
+      ${g.unplaced.map((d) => row(d, null)).join('')}</section>` : '';
+    const note = `<div class="note" style="grid-column: 1 / -1">Battery sensors refresh these details rarely, so a link can be hours old. Offline counts come from HA’s history; restarts from the device itself.</div>`;
+    return ['Mesh', esc(lede), '', `<div class="grid">${map}${groups}${unplaced}${note}</div>`];
+  }
+
   // ──────────────────────────── lights ────────────────────────────
 
   _lights() {
@@ -1183,6 +1387,24 @@ class LaptopDashboardCard extends HTMLElement {
 }
 
 // ───────────────────────────── helpers ─────────────────────────────
+
+// A Thread extended address as the number JSON gives for it in the neighbour
+// tables (rounded to a double the same way), from "aa:bb:…" or base64.
+function threadKey(address, base64 = false) {
+  const hex = base64 ? [...atob(address)].map((ch) => ch.charCodeAt(0).toString(16).padStart(2, '0')).join('')
+    : address.replace(/:/g, '');
+  return Number(BigInt(`0x${hex}`));
+}
+
+// Battery devices not reporting, by the rule of the old dashboard's attention
+// card (attention-card.yaml): a battery sensor without a number, the feeder aside.
+function offlineSensors(hass) {
+  return Object.values(hass.states)
+    .filter((s) => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery'
+      && !`${s.entity_id} ${s.attributes.friendly_name || ''}`.toLowerCase().includes('granary')
+      && num(s.state) === null)
+    .map((s) => (s.attributes.friendly_name || s.entity_id).replace(/ Battery$/, '').replace(/ Sensor$/, ''));
+}
 
 // "0.4", "12": Mbit/s to one decimal while small.
 const mbit = (value) => (value < 10 ? value.toFixed(1) : value.toFixed(0));
@@ -1505,6 +1727,20 @@ const STYLES = `
   .hours { display: flex; justify-content: space-between; margin-left: 58px; font-size: 12px; color: ${C.muted}; }
 
   h3 { margin: 6px 0 0; font-size: 15px; font-weight: 600; }
+  .mesh-map { position: relative; height: 340px; margin: 4px 0 8px; }
+  .mesh-map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .mesh-node { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center;
+    padding: 8px 14px; border-radius: 12px; background: ${C.card}; border: 2px solid ${C.control}; text-align: center; white-space: nowrap; }
+  .mesh-node span { font-size: 13px; color: ${C.muted}; }
+  .mesh-node.leader { border-color: ${C.accent}; }
+  .mesh-node.off { border-color: ${C.alertLine}; background: ${C.alertBg}; color: ${C.alertFg}; }
+  .mesh-tag { position: absolute; transform: translate(-50%, -50%); font-size: 12px; padding: 1px 6px; border-radius: 6px;
+    background: ${C.card}; color: ${C.muted}; white-space: nowrap; }
+  .mesh-row { display: grid; grid-template-columns: minmax(150px, 2fr) repeat(4, minmax(90px, 1fr)) 60px; gap: 4px 12px;
+    align-items: center; min-height: 48px; border-top: 1px solid ${C.line}; padding: 6px 0; }
+  .mesh-row.off .strong { color: ${C.alertFg}; }
+  .mesh-links { display: none; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 5px; margin-right: 6px; }
   .split-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 40px; }
   .split-stats { display: flex; flex-wrap: wrap; gap: 12px 40px; }
   .seg { position: absolute; top: 0; bottom: 0; background: ${C.accent}; border-radius: 3px; }
@@ -1527,6 +1763,13 @@ const STYLES = `
   .phone .day { gap: 8px; }
   .phone .week-bar .block { padding-left: 4px; font-size: 11px; }
   .phone .mid { font-size: 26px; }
+  .phone .mesh-map { height: 300px; }
+  .phone .mesh-node { padding: 6px 10px; font-size: 14px; white-space: normal; max-width: 130px; }
+  .phone .mesh-node span { font-size: 11px; }
+  .phone .mesh-tag, .phone .mesh-row .empty { display: none; }
+  .phone .mesh-links { display: block; }
+  .phone .mesh-row { grid-template-columns: 1fr 1fr; }
+  .phone .mesh-row > :first-child { grid-column: 1 / -1; }
   .phone .day-name { width: 36px; }
   .phone .hours { margin-left: 44px; }
   .phone .day-total { width: 64px; font-size: 13px; }
