@@ -59,6 +59,7 @@ const RATE_TO_MBIT = { 'bit/s': 1e-6, 'kbit/s': 1e-3, 'Mbit/s': 1, 'B/s': 8e-6, 
 const LINK = [['None', '#9AA3AB'], ['Poor', '#B4530F'], ['Fair', '#C0882B'], ['Good', '#2E7D4F']];
 const ROLES = { 2: 'Battery sensor', 3: 'Powered device', 4: 'Can relay', 5: 'Relay', 6: 'Leader' };
 const DAYS = 31;
+const BOILER_HISTORY_DAYS = 10;
 const MONTHS = 11;
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -200,7 +201,9 @@ class LaptopDashboardCard extends HTMLElement {
     if (page === 'heating') {
       r.push({ name: 'heat24', kind: 'history', hours: 24,
         ids: [h.target_entity, h.reference_entity, h.setpoint_entity, h.tado_setpoint_entity] });
-      r.push({ name: 'boiler24', kind: 'states', hours: 24, ids: [h.boiler_entity] });
+      // When tado called for heat, from the thermostat's own history: HA keeps
+      // about 10 days of it, from before the boiler sensors existed.
+      r.push({ name: 'boilerRuns', kind: 'runs', hours: BOILER_HISTORY_DAYS * 24, ids: [h.climate_entity] });
       r.push({ name: 'boilerDays', kind: 'stats', period: 'day', days: DAYS, types: ['max'], ids: [h.boiler_today_entity] });
     }
     if (page === 'cat') {
@@ -267,6 +270,29 @@ class LaptopDashboardCard extends HTMLElement {
       }
       return { from: start.getTime(), to: now.getTime(), series: out };
     }
+    if (req.kind === 'runs') {
+      // [[start, end], ...] while hvac_action was 'heating'. Needs the
+      // attributes, unlike 'history'; a thermostat changes a few hundred times a week.
+      const start = new Date(now.getTime() - req.hours * 3600000);
+      const result = await this._hass.callWS({
+        type: 'history/history_during_period', start_time: start.toISOString(), end_time: now.toISOString(),
+        entity_ids: req.ids, minimal_response: false, no_attributes: false, significant_changes_only: false,
+      });
+      const points = result[req.ids[0]] || [];
+      const runs = [];
+      let since = null;
+      for (const p of points) {
+        const t = (p.lu ?? p.lc) * 1000;
+        const on = p.a?.hvac_action === 'heating';
+        if (on && since === null) since = t;
+        if (!on && since !== null) { runs.push([since, t]); since = null; }
+      }
+      if (since !== null) runs.push([since, now.getTime()]);
+      // Covered from the first point: the state at start_time, or later if
+      // the recorder has already purged that far back.
+      const from = points.length ? Math.max(start.getTime(), (points[0].lu ?? points[0].lc) * 1000) : now.getTime();
+      return { from, to: now.getTime(), runs };
+    }
     if (req.kind === 'mesh') {
       const nodes = await Promise.all(this._meshDevices().map(async (d) => {
         try {
@@ -318,6 +344,7 @@ class LaptopDashboardCard extends HTMLElement {
       for (const p of result[id] || []) byKey[keyOf(new Date(p.start))] = p;
       out[id] = Object.fromEntries(req.types.map((type) => [type,
         slots.map((s) => Math.max(num(byKey[s.key]?.[type]) ?? 0, 0))]));
+      out[id].present = slots.map((s) => Boolean(byKey[s.key]));
     }
     return { dates: slots.map((s) => s.date), series: out };
   }
@@ -479,8 +506,22 @@ class LaptopDashboardCard extends HTMLElement {
       scheduled: schedule?.state === 'on' ? num(schedule.attributes.target) : setback,
       overridden: holdTs > nowTs || pauseTs > nowTs,
       boiler: action === 'heating' ? 'heating' : action || '',
-      ranToday: hoursText(this._value(h.boiler_today_entity)),
-      ranWeek: hoursText(this._value(h.boiler_week_entity)),
+      ...this._boilerTime(),
+    };
+  }
+
+  // Time on today and over 7 days. The thermostat's history, once the Heating
+  // page has loaded it, also covers the days before the boiler sensors.
+  _boilerTime() {
+    const h = this._config.heating;
+    const runs = this._data.boilerRuns?.value;
+    if (!runs || runs.from > Date.now() - 7 * 86400000) {
+      return { ranToday: hoursText(this._value(h.boiler_today_entity)), ranWeek: hoursText(this._value(h.boiler_week_entity)) };
+    }
+    const midnight = startOfDay(new Date()).getTime();
+    return {
+      ranToday: duration(onBetween(runs.runs, midnight, runs.to)),
+      ranWeek: duration(onBetween(runs.runs, runs.to - 7 * 86400000, runs.to)),
     };
   }
 
@@ -532,7 +573,7 @@ class LaptopDashboardCard extends HTMLElement {
           <span class="small muted">${esc(note)}</span></span><span class="value">${esc(value)}</span></div>`).join('')}
       </section></div>
       ${this._heatChart()}
-      ${this._dayBars('boilerDays', 'Boiler on per day', h.boiler_today_entity, 'max', C.heat, 'h', true)}
+      ${this._boilerDays()}
       ${this._week(s.setback)}
     </div>`;
     return ['Heating', esc(this._value(h.status_entity) || s.mode), aside, body];
@@ -548,18 +589,40 @@ class LaptopDashboardCard extends HTMLElement {
     ];
     // Shaded where tado called for heat. Drawn once both have loaded; the
     // lines don't wait for it.
-    const boiler = this._data.boiler24?.value;
-    const bands = [];
-    if (boiler) {
-      const points = boiler.series[h.boiler_entity] || [];
-      points.forEach(([t, state], i) => {
-        if (state === 'on') bands.push([t, points[i + 1]?.[0] ?? boiler.to]);
-      });
-    }
+    const bands = this._data.boilerRuns?.value?.runs || [];
     const keys = [...series, { name: 'Boiler on', colour: BAND }];
     return figure('Last 24 hours', legend(keys), this._chartState('heat24')
       || lineChart(this._data.heat24.value, series, { unit: '°', bands,
         label: 'Heating target, bedroom and setpoint over the last 24 hours, shaded where the boiler was on' }));
+  }
+
+  // Hours on per day: from the thermostat's history for the days it fully
+  // covers (the last ~10, and today), from the daily statistics before that.
+  _boilerDays() {
+    const title = 'Boiler on per day';
+    const empty = this._chartState('boilerDays') || this._chartState('boilerRuns');
+    if (empty) return figure(title, '', empty);
+    const id = this._config.heating.boiler_today_entity;
+    const { dates, series } = this._data.boilerDays.value;
+    const runs = this._data.boilerRuns.value;
+    const stats = series[id] || { max: [], present: [] };
+    const values = dates.map((d, i) => {
+      const start = d.getTime();
+      if (start >= runs.from) return onBetween(runs.runs, start, start + 86400000) / 3600000;
+      return stats.present[i] ? stats.max[i] : null;
+    });
+    const first = values.findIndex((v) => v !== null);
+    if (first < 0) return figure(title, '', '<div class="chart-empty">Nothing recorded yet.</div>');
+    const known = values.slice(first, -1).filter((v) => v !== null);
+    const avg = known.length ? known.reduce((a, b) => a + b, 0) / known.length : null;
+    const bars = values.map((v, i) => ({
+      tip: `${dates[i].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}: ${v === null ? 'no data'
+        : (duration(v * 3600000) || 'off')}${i === values.length - 1 ? ' so far' : ''}`,
+      parts: [{ v: v ?? 0, colour: i === values.length - 1 ? `${C.heat}66` : C.heat }],
+    }));
+    const since = dates[first].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const note = avg === null ? `From ${since}` : `From ${since} · ${duration(avg * 3600000) || 'under a minute'} a day on average`;
+    return figure(title, `<span class="note">${esc(note)}</span>`, barChart(bars, dayLabels(dates), 180));
   }
 
   // Today's blocks as a list, the current one marked.
@@ -1438,6 +1501,9 @@ function duration(ms) {
   const h = Math.floor(minutes / 60);
   return minutes % 60 ? `${h} h ${minutes % 60} min` : `${h} h`;
 }
+
+// Milliseconds of [[start, end], ...] that fall between from and to.
+const onBetween = (runs, from, to) => runs.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
 
 // 1.25 (hours, as history_stats gives them) -> "1 h 15 min"; '' under a minute.
 const hoursText = (hours) => (num(hours) === null ? '' : duration(num(hours) * 3600000));

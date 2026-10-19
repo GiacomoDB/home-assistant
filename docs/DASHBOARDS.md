@@ -74,7 +74,8 @@ their own: **Home** (heating controls, rooms, lights, a summary of each other
 page, 24 hours of room temperatures), **Heating** (controls, the live switch,
 what the controller sees and computes, 24 hours of target vs bedroom vs
 computed vs what tado is set to, shaded where the boiler was on, 31 days of
-boiler hours, today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
+boiler hours (the last ~10 worked out from the thermostat's own history, so
+they predate the boiler sensors), today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
 box, today against yesterday, 31 days of water, sessions and visits),
 **Energy** (kWh per measured device by day and month, and a unit rate box that
 turns them into pounds), **Appliances** (washer, dryer and vacuum with their

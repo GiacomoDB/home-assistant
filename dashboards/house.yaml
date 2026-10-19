@@ -22,8 +22,8 @@ heating:
   hold_entity: input_datetime.heating_hold_until
   pause_entity: input_datetime.heating_override_until
   live_entity: input_boolean.heating_controller_enabled
-  # tado calling for heat, and how long it has today and over 7 days.
-  boiler_entity: binary_sensor.heating_boiler
+  # How long tado has called for heat today and over 7 days. The Heating page
+  # also reads climate_entity's own history, which covers the days before these.
   boiler_today_entity: sensor.heating_boiler_today
   boiler_week_entity: sensor.heating_boiler_last_7_days
 
