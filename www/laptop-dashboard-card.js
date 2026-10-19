@@ -518,7 +518,7 @@ class LaptopDashboardCard extends HTMLElement {
       ['Computed setpoint', setpoint?.attributes.reason || '', deg(this._value(h.setpoint_entity))],
       ['tado set to', 'its setpoint now', deg(this._value(h.tado_setpoint_entity))],
       ['Bias', 'tado minus bedroom, capped at ±3°', deg(this._value(h.bias_entity))],
-      ['Boiler', `on ${s.ranToday || 'not at all'} today, ${s.ranWeek || 'none'} in 7 days`,
+      ['Boiler', `time on: ${s.ranToday || 'none'} today, ${s.ranWeek || 'none'} in 7 days`,
         s.boiler ? s.boiler[0].toUpperCase() + s.boiler.slice(1) : '—'],
       ['Setback', 'between blocks', deg(s.setback)],
     ];
