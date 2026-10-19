@@ -53,7 +53,9 @@ cat:
   average_drink_entity: sensor.dockstream_smart_fountain_today_s_average_drinking_time
   drink_time_entity: sensor.dockstream_smart_fountain_today_s_total_drinking_time
   litter_visits_entity: sensor.litter_box_visits_today
-  litter_occupancy_entity: binary_sensor.cat_in_litter_box
+  # The raw sensor, for "in use now" and "last visit": it clears ~30 s after
+  # the cat leaves. Visits are counted from the merged one (litter_box.yaml).
+  litter_occupancy_entity: binary_sensor.myggspray_wrlss_mtn_sensor_occupancy
   refill_below: 25
 
 # Only what measures itself: there's no smart meter, and the Glow

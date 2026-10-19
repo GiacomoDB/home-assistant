@@ -62,7 +62,9 @@ views:
           fountain_today_entity: sensor.dockstream_smart_fountain_today_s_water_consumption
           fountain_yesterday_entity: sensor.dockstream_smart_fountain_yesterday_s_water_consumption
           litter_visits_entity: sensor.litter_box_visits_today
-          litter_occupancy_entity: binary_sensor.cat_in_litter_box
+          # The raw sensor, for "in use now" and "last visit": it clears ~30 s after
+          # the cat leaves. Visits are counted from the merged one (litter_box.yaml).
+          litter_occupancy_entity: binary_sensor.myggspray_wrlss_mtn_sensor_occupancy
           energy_cost_entity: sensor.electricity_meter_cost_today
           energy_usage_entity: sensor.electricity_meter_usage_today
           # Disabled by the Glow integration until enabled in Settings →

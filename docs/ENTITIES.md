@@ -144,7 +144,7 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | Entity ID | Created by | Meaning |
 |---|---|---|
 | `sensor.cat_water_7_day_average` | `packages/cat_water_anomaly.yaml` | Trailing 7-day mean of daily fountain intake, from a `statistics` sensor over `yesterday_s_water_consumption` |
-| `binary_sensor.cat_in_litter_box` | `packages/litter_box.yaml` | The Myggspray occupancy sensor with a 5-minute cooldown: stays `on` until the raw sensor has been clear for 5 minutes, so one visit is one `on` |
+| `binary_sensor.cat_in_litter_box` | `packages/litter_box.yaml` | The Myggspray occupancy sensor with a 10-minute cooldown: stays `on` until the raw sensor has been clear for 10 minutes, so one visit is one `on` |
 | `sensor.litter_box_visits_today` | `packages/litter_box.yaml` | Visits since midnight — `on` transitions of `binary_sensor.cat_in_litter_box`, from `history_stats` |
 | `schedule.heating` | `packages/heating.yaml` | Heating blocks. While a block is on, its `target` attribute is the bedroom's target |
 | `sensor.heating_status` | `packages/heating.yaml` | One line for the dashboard: what is in charge and until when, e.g. "Bedroom at 20.5 °C until 22:00" |

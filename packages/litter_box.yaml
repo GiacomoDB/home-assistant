@@ -16,9 +16,18 @@
 # drop to clear mid-visit and re-trigger on the digging or the exit. Counting
 # the raw sensor would score one visit two or three times. So the count reads
 # `binary_sensor.cat_in_litter_box` instead: on with the first trigger, and off
-# only once the raw sensor has been clear for 5 minutes. Re-triggers inside that
+# only once the raw sensor has been clear for 10 minutes. Re-triggers inside that
 # window extend the same visit. The trade-off is that two genuine visits under
-# 5 minutes apart count as one, which with one cat is rare.
+# 10 minutes apart count as one, which with one cat is rare.
+#
+# Why 10: in 10 days to 2026-10-19 (63 visits) the raw sensor stayed on about
+# 30 s per trigger, and a visit was usually two triggers, in and out, about a
+# minute apart. The pauses inside a visit were all under 4.6 minutes, and the
+# gaps between visits all over 10, with nothing in between. 5 minutes left 24 s
+# of margin for a cat sitting still; 10 gives the same counts with room to spare.
+#
+# The dashboards' "in use now / last visit" reads the raw sensor, which clears
+# about 30 s after the cat leaves; this one stays on for the window.
 #
 # Changing the window: edit `delay_off` below, then push with --restart.
 
@@ -29,7 +38,7 @@ template:
         device_class: occupancy
         state: "{{ is_state('binary_sensor.myggspray_wrlss_mtn_sensor_occupancy', 'on') }}"
         delay_off:
-          minutes: 5
+          minutes: 10
 
 sensor:
   - platform: history_stats

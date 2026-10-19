@@ -51,7 +51,7 @@ last setpoint until "resume schedule" in the tado app.
   day or two, so after an hour with no update from any of its entities (the
   vacuum dock alone reports every 15 minutes) it reloads the integration, at
   most once an hour, and logs it in the logbook.
-- **`litter_box.yaml`**: gives the litter box occupancy sensor a 5-minute
+- **`litter_box.yaml`**: gives the litter box occupancy sensor a 10-minute
   cooldown, so a cat holding still mid-visit doesn't count twice, and counts
   today's visits with `history_stats`, since the occupancy sensor alone has no
   statistics to chart.
