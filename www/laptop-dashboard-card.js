@@ -618,11 +618,11 @@ class LaptopDashboardCard extends HTMLElement {
     const bars = values.map((v, i) => ({
       tip: `${dates[i].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}: ${v === null ? 'no data'
         : (duration(v * 3600000) || 'off')}${i === values.length - 1 ? ' so far' : ''}`,
-      parts: [{ v: v ?? 0, colour: i === values.length - 1 ? `${C.heat}66` : C.heat }],
+      parts: [{ v: (v ?? 0) * 60, colour: i === values.length - 1 ? `${C.heat}66` : C.heat }],
     }));
     const since = dates[first].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     const note = avg === null ? `From ${since}` : `From ${since} · ${duration(avg * 3600000) || 'under a minute'} a day on average`;
-    return figure(title, `<span class="note">${esc(note)}</span>`, barChart(bars, dayLabels(dates), 180));
+    return figure(title, `<span class="note">${esc(note)}</span>`, barChart(bars, dayLabels(dates), 180, false, minutesLabel));
   }
 
   // Today's blocks as a list, the current one marked.
@@ -1502,6 +1502,9 @@ function duration(ms) {
   return minutes % 60 ? `${h} h ${minutes % 60} min` : `${h} h`;
 }
 
+// A bar chart axis in minutes: "40 min", "1.5 h".
+const minutesLabel = (v) => (v === 0 ? '0' : v < 60 ? `${Math.round(v)} min` : `${Math.round(v / 6) / 10} h`);
+
 // Milliseconds of [[start, end], ...] that fall between from and to.
 const onBetween = (runs, from, to) => runs.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
 
@@ -1652,13 +1655,21 @@ function niceTop(value) {
 }
 
 // Stacked bars: each bar is { tip, parts: [{ v, colour }] }, scaled to the tallest.
-function barChart(bars, labels, height = 200, spaced = false) {
-  const top = Math.max(...bars.map((b) => b.parts.reduce((sum, p) => sum + p.v, 0)), 0) || 1;
-  return `<div class="bars ${spaced ? 'spaced' : ''}" style="height:${height}px">
+// With `scale` (a value -> label function) the top is rounded up and the
+// values get an axis on the left.
+function barChart(bars, labels, height = 200, spaced = false, scale = null) {
+  const tallest = Math.max(...bars.map((b) => b.parts.reduce((sum, p) => sum + p.v, 0)), 0);
+  const top = (scale && tallest ? niceTop(tallest) : tallest) || 1;
+  const chart = `<div class="bars ${spaced ? 'spaced' : ''} ${scale ? 'gridded' : ''}" style="height:${height}px">
     ${bars.map((b) => `<div class="bar" title="${esc(b.tip)}">${b.parts.slice().reverse()
       .map((p) => `<div style="height:${(p.v / top) * 100}%;background:${esc(p.colour)}"></div>`).join('')}</div>`).join('')}
   </div>
   <div class="bar-labels ${spaced ? 'even' : ''}">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>`;
+  if (!scale) return chart;
+  return `<div class="chart">
+    <div class="y-axis" style="height:${height}px">${[top, top / 2, 0].map((v) => `<span>${esc(scale(v))}</span>`).join('')}</div>
+    <div class="plot-col">${chart}</div>
+  </div>`;
 }
 
 function loadFonts() {
@@ -1804,6 +1815,8 @@ const STYLES = `
     border: 2px dashed ${C.control}; border-radius: 12px; font-size: 15px; }
   .bars { display: flex; align-items: flex-end; gap: 3px; border-bottom: 1px solid ${C.control}; }
   .bars.spaced { gap: 14px; }
+  .bars.gridded { border-top: 1px solid ${C.faint};
+    background: linear-gradient(${C.faint}, ${C.faint}) 0 50% / 100% 1px no-repeat; }
   .bar { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
   .bar div:last-child { border-radius: 3px 3px 0 0; }
   .bar-labels { display: flex; justify-content: space-between; font-size: 12px; color: ${C.muted}; }
