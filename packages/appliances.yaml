@@ -1,5 +1,6 @@
 # Appliances: the numbers behind the Appliances view in dashboards/home.yaml.
-# Read-only -- nothing here controls a device.
+# Read-only -- nothing here controls a device. The one action is reloading the
+# SmartThings integration when its connection goes silent (end of file).
 #
 # WHAT SAMSUNG SMARTTHINGS GIVES (checked 2026-10-15)
 # Washer and dryer: a machine state (run / pause / stop), a job state (the
@@ -20,6 +21,7 @@
 #   running at that moment is counted when it finishes, but has no length or
 #   energy: its start was never seen.
 # - The last wash's and dry's length and energy.
+# - A watchdog that reloads SmartThings after an hour with no update at all.
 #
 # WHAT COUNTS AS A CYCLE
 # A cycle STARTS when the machine state goes to run from stop. Resuming from a
@@ -352,3 +354,42 @@ template:
         state: >-
           {% set t = as_datetime(state_attr('sensor.robot_vacuum_runs', 'last_run'), none) %}
           {{ (time_since(t) ~ ' ago') if t else 'No run yet' }}
+
+automation:
+  # SmartThings pushes changes over one long-lived cloud connection and never
+  # polls. That connection dies silently now and then -- five times between
+  # 2026-10-09 and 2026-10-19, for 8 to 43 hours each, with the integration
+  # still "loaded" -- and nothing refreshes until it's reloaded. While it's
+  # alive, the vacuum dock's energy counter alone reports every 15 minutes, so
+  # an hour with nothing from any SmartThings entity means the connection is
+  # gone, not that the house is quiet. At most one reload an hour, so a Samsung
+  # outage doesn't turn into a reload loop. Each reload is in the logbook.
+  #
+  # A reload makes the entities briefly unavailable; the cycle counters above
+  # already treat coming back from unavailable as the same cycle.
+  - id: smartthings_reload_when_silent
+    alias: "SmartThings: reload when silent"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: /15
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set heard = expand(integration_entities('smartthings'))
+               | map(attribute='last_reported') | list %}
+          {{ heard | count > 0 and (now() - heard | max).total_seconds() > 3600 }}
+      - condition: template
+        value_template: >-
+          {% set last = this.attributes.get('last_triggered') %}
+          {{ last is none or (now() - last).total_seconds() > 3600 }}
+    actions:
+      - action: logbook.log
+        data:
+          name: SmartThings
+          message: >-
+            silent since {{ (expand(integration_entities('smartthings'))
+              | map(attribute='last_reported') | max).astimezone().strftime('%a %H:%M') }}; reloading
+      - action: homeassistant.reload_config_entry
+        target:
+          entity_id: sensor.robot_vacuum_energy

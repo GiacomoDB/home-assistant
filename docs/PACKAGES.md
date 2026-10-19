@@ -46,7 +46,11 @@ last setpoint until "resume schedule" in the tado app.
   line per SmartThings device, cycle counters for the washer, dryer and vacuum
   (with long-term statistics, so they chart per week and month; SmartThings
   has no counter of its own), the last wash's and dry's length and energy, and
-  when each machine last finished and the vacuum last ran.
+  when each machine last finished and the vacuum last ran. Also a watchdog:
+  SmartThings only pushes, over one cloud connection that dies silently every
+  day or two, so after an hour with no update from any of its entities (the
+  vacuum dock alone reports every 15 minutes) it reloads the integration, at
+  most once an hour, and logs it in the logbook.
 - **`litter_box.yaml`**: gives the litter box occupancy sensor a 5-minute
   cooldown, so a cat holding still mid-visit doesn't count twice, and counts
   today's visits with `history_stats`, since the occupancy sensor alone has no
