@@ -57,8 +57,8 @@ and energy per day and per month (`packages/appliances.yaml`).
 The wall tablet, a Galaxy Tab A7 in portrait (about 800×1280 CSS px): the
 state of the house on one screen, read from across the room. A clock and the
 weather, warnings (lights offline, water leaks; hidden when there are none),
-the heating with −/+, Boost, Back to schedule and today's schedule as a bar,
-the six rooms, eight small tiles (fountain, litter box, energy, air, washer,
+the heating with −/+, Boost, Back to schedule, the boiler's time on today
+and today's schedule as a bar, the six rooms, eight small tiles (fountain, litter box, energy, air, washer,
 dryer, vacuum, network) and the lights as toggles. Light colours by day,
 dark and dim from 22:00 to 07:00.
 
@@ -73,8 +73,8 @@ Seven pages for checking and changing things at a desk, with a sidebar of
 their own: **Home** (heating controls, rooms, lights, a summary of each other
 page, 24 hours of room temperatures), **Heating** (controls, the live switch,
 what the controller sees and computes, 24 hours of target vs bedroom vs
-computed vs what tado is set to,
-today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
+computed vs what tado is set to, shaded where the boiler was on, 31 days of
+boiler hours, today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
 box, today against yesterday, 31 days of water, sessions and visits),
 **Energy** (kWh per measured device by day and month, and a unit rate box that
 turns them into pounds), **Appliances** (washer, dryer and vacuum with their

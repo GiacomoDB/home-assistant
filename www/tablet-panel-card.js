@@ -296,7 +296,9 @@ class TabletPanelCard extends HTMLElement {
 
     const scheduled = schedule?.state === 'on' ? num(schedule.attributes.target) : setback;
     const action = this._state(h.climate_entity)?.attributes.hvac_action;
-    const boiler = action === 'heating' ? 'Boiler heating' : action ? `Boiler ${action}` : '';
+    const ranToday = num(this._value(h.boiler_today_entity));
+    const boiler = (action === 'heating' ? 'Boiler heating' : action ? `Boiler ${action}` : '')
+      + (ranToday ? ` · ${hoursText(ranToday)} today` : '');
     const overridden = holdTs > nowTs || pauseTs > nowTs;
 
     // −/+ are off during a boost: they step from the schedule's target, not the
@@ -445,6 +447,14 @@ class TabletPanelCard extends HTMLElement {
       </div>
     </section>`;
   }
+}
+
+// 1.25 (hours, as history_stats gives them) -> "1 h 15 min"; '' under a minute.
+function hoursText(hours) {
+  const minutes = Math.round(hours * 60);
+  if (minutes < 1) return '';
+  if (minutes < 60) return `${minutes} min`;
+  return minutes % 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes / 60} h`;
 }
 
 const fmt = (value) => {

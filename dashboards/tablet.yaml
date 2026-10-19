@@ -33,6 +33,7 @@ views:
           hold_entity: input_datetime.heating_hold_until
           pause_entity: input_datetime.heating_override_until
           live_entity: input_boolean.heating_controller_enabled
+          boiler_today_entity: sensor.heating_boiler_today
 
         # Same rooms and sensors as climate-table-card.yaml.
         rooms:

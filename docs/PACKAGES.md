@@ -40,6 +40,11 @@ shadow mode, and needs the HomeKit thermostat renamed to `climate.heating`;
 see the file header. Turning Live off after it has written leaves tado on the
 last setpoint until "resume schedule" in the tado app.
 
+Boiler time comes from the one figure HomeKit gives: tado's `hvac_action`,
+`heating` while it calls for heat. `binary_sensor.heating_boiler` holds it,
+and two `history_stats` sensors add up hours today (kept per day long-term)
+and over the last 7 days.
+
 ## Sensors for the dashboards
 
 - **`appliances.yaml`**: the numbers behind the **Appliances** view. A status

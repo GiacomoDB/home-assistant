@@ -77,6 +77,15 @@
 # control "until you cancel" it never fights HA, and if HA is gone for good,
 # "resume schedule" in the app hands the house back to tado.
 #
+# BOILER TIME
+# HomeKit gives no gas or power figure, only tado's `hvac_action`: `heating`
+# while the zone calls for heat, which closes the receiver's boiler relay. That
+# is as close to "the boiler is running" as HA gets; the boiler may still cycle
+# inside a call. `binary_sensor.heating_boiler` turns it into a state, so
+# history_stats can add it up: hours today (a state_class, so daily totals are
+# kept indefinitely as the day's `max`, like litter_box.yaml) and over the last
+# 7 days. tado's own "heating power %" is cloud-only.
+#
 # TUNING
 #   schedule.heating           blocks below: the bedroom's target
 #   input_number.heating_setback   outside the blocks (dashboard-editable)
@@ -316,6 +325,32 @@ template:
         state_class: measurement
         state: "{{ state_attr('climate.heating', 'temperature') }}"
         availability: "{{ state_attr('climate.heating', 'temperature') is number }}"
+
+  - binary_sensor:
+      # tado calling for heat; see BOILER TIME.
+      - name: Heating boiler
+        unique_id: heating_boiler
+        device_class: heat
+        state: "{{ state_attr('climate.heating', 'hvac_action') == 'heating' }}"
+        availability: "{{ states('climate.heating') not in ['unavailable', 'unknown'] }}"
+
+sensor:
+  - platform: history_stats
+    name: Heating boiler today
+    unique_id: heating_boiler_today
+    entity_id: binary_sensor.heating_boiler
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Heating boiler last 7 days
+    unique_id: heating_boiler_week
+    entity_id: binary_sensor.heating_boiler
+    state: "on"
+    type: time
+    start: "{{ now() - timedelta(days=7) }}"
+    end: "{{ now() }}"
 
 automation:
   - id: heating_controller

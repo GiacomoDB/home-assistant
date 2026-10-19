@@ -153,6 +153,9 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | `sensor.heating_bias` | `packages/heating.yaml` | tado reading − bedroom, clamped ±3; 0 while tado's reading stands in |
 | `sensor.heating_computed_setpoint` | `packages/heating.yaml` | What HA sends tado (or would, in shadow mode or a pause): desired + bias, rounded to 0.5, or 25 during a boost. `reason` attribute: schedule / setback / manual hold / boost / manual override / shadow mode |
 | `sensor.heating_tado_setpoint` | `packages/heating.yaml` | What tado is actually set to (`climate.heating`'s `temperature`), plotted next to the computed setpoint. They differ in shadow mode and during a pause |
+| `binary_sensor.heating_boiler` | `packages/heating.yaml` | On while tado calls for heat (`climate.heating`'s `hvac_action` is `heating`), which closes the boiler relay. The only boiler figure HomeKit gives |
+| `sensor.heating_boiler_today` | `packages/heating.yaml` | Hours the boiler has been on since midnight, from `history_stats`. Its daily `max` is the day's total |
+| `sensor.heating_boiler_last_7_days` | `packages/heating.yaml` | Hours the boiler was on over the last 7 days, from `history_stats` |
 | `input_boolean.heating_controller_enabled` | `packages/heating.yaml` | Off = shadow mode: computes and logs, never writes. Turning it off leaves tado on the last setpoint sent |
 | `input_number.heating_setback` | `packages/heating.yaml` | Target outside blocks; reset to 16 on restart |
 | `input_number.heating_last_written` | `packages/heating.yaml` | Bookkeeping: last setpoint sent, so the bridge's echo isn't taken as a manual change |

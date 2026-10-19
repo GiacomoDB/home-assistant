@@ -41,6 +41,8 @@ const C = {
   heat: '#B4530F', water: '#2563B8', grey: '#9AA3AB', alertBg: '#FFF4EE', alertFg: '#9A3F0E',
   alertLine: '#F2C9B3', goodBg: '#E2F2E6', goodFg: '#1D5E2E',
 };
+// The boiler-on shading in the heating chart.
+const BAND = `${C.heat}26`;
 const ROOM_COLOURS = ['#B4530F', '#2563B8', '#0B6E78', '#8A6FB5', '#C0882B', '#5B8C3A'];
 
 const PAGES = [['home', 'Home'], ['heating', 'Heating'], ['cat', 'Cat'], ['energy', 'Energy'],
@@ -198,6 +200,8 @@ class LaptopDashboardCard extends HTMLElement {
     if (page === 'heating') {
       r.push({ name: 'heat24', kind: 'history', hours: 24,
         ids: [h.target_entity, h.reference_entity, h.setpoint_entity, h.tado_setpoint_entity] });
+      r.push({ name: 'boiler24', kind: 'states', hours: 24, ids: [h.boiler_entity] });
+      r.push({ name: 'boilerDays', kind: 'stats', period: 'day', days: DAYS, types: ['max'], ids: [h.boiler_today_entity] });
     }
     if (page === 'cat') {
       const cat = c.cat || {};
@@ -475,6 +479,8 @@ class LaptopDashboardCard extends HTMLElement {
       scheduled: schedule?.state === 'on' ? num(schedule.attributes.target) : setback,
       overridden: holdTs > nowTs || pauseTs > nowTs,
       boiler: action === 'heating' ? 'heating' : action || '',
+      ranToday: hoursText(this._value(h.boiler_today_entity)),
+      ranWeek: hoursText(this._value(h.boiler_week_entity)),
     };
   }
 
@@ -512,7 +518,8 @@ class LaptopDashboardCard extends HTMLElement {
       ['Computed setpoint', setpoint?.attributes.reason || '', deg(this._value(h.setpoint_entity))],
       ['tado set to', 'its setpoint now', deg(this._value(h.tado_setpoint_entity))],
       ['Bias', 'tado minus bedroom, capped at ±3°', deg(this._value(h.bias_entity))],
-      ['Boiler', 'as tado reports it', s.boiler ? s.boiler[0].toUpperCase() + s.boiler.slice(1) : '—'],
+      ['Boiler', `on ${s.ranToday || 'not at all'} today, ${s.ranWeek || 'none'} in 7 days`,
+        s.boiler ? s.boiler[0].toUpperCase() + s.boiler.slice(1) : '—'],
       ['Setback', 'between blocks', deg(s.setback)],
     ];
     const aside = `<div class="switch-row boxed">
@@ -525,6 +532,7 @@ class LaptopDashboardCard extends HTMLElement {
           <span class="small muted">${esc(note)}</span></span><span class="value">${esc(value)}</span></div>`).join('')}
       </section></div>
       ${this._heatChart()}
+      ${this._dayBars('boilerDays', 'Boiler on per day', h.boiler_today_entity, 'max', C.heat, 'h', true)}
       ${this._week(s.setback)}
     </div>`;
     return ['Heating', esc(this._value(h.status_entity) || s.mode), aside, body];
@@ -538,8 +546,20 @@ class LaptopDashboardCard extends HTMLElement {
       { id: h.target_entity, name: 'Target', colour: C.water, step: true },
       { id: h.reference_entity, name: 'Bedroom', colour: C.heat },
     ];
-    return figure('Last 24 hours', legend(series), this._chartState('heat24')
-      || lineChart(this._data.heat24.value, series, { unit: '°', label: 'Heating target, bedroom and setpoint over the last 24 hours' }));
+    // Shaded where tado called for heat. Drawn once both have loaded; the
+    // lines don't wait for it.
+    const boiler = this._data.boiler24?.value;
+    const bands = [];
+    if (boiler) {
+      const points = boiler.series[h.boiler_entity] || [];
+      points.forEach(([t, state], i) => {
+        if (state === 'on') bands.push([t, points[i + 1]?.[0] ?? boiler.to]);
+      });
+    }
+    const keys = [...series, { name: 'Boiler on', colour: BAND }];
+    return figure('Last 24 hours', legend(keys), this._chartState('heat24')
+      || lineChart(this._data.heat24.value, series, { unit: '°', bands,
+        label: 'Heating target, bedroom and setpoint over the last 24 hours, shaded where the boiler was on' }));
   }
 
   // Today's blocks as a list, the current one marked.
@@ -624,7 +644,7 @@ class LaptopDashboardCard extends HTMLElement {
     const heating = `<section class="card" aria-label="Heating">
       <div class="title-row"><h2>Heating</h2>${this._link('heating', 'Schedule')}</div>
       ${this._heatControl(false)}
-      <div class="note center">Bedroom ${esc(deg(this._value(h.reference_entity)))} · schedule ${esc(deg(s.scheduled))}${s.boiler ? ` · boiler ${esc(s.boiler)}` : ''}</div>
+      <div class="note center">Bedroom ${esc(deg(this._value(h.reference_entity)))} · schedule ${esc(deg(s.scheduled))}${s.boiler ? ` · boiler ${esc(s.boiler)}${s.ranToday ? `, on ${esc(s.ranToday)} today` : ''}` : ''}</div>
     </section>`;
 
     const rooms = `<section class="card" aria-label="Rooms"><h2>Rooms</h2>
@@ -793,7 +813,8 @@ class LaptopDashboardCard extends HTMLElement {
       tip: `${dates[i].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}: ${Math.round(v * 10) / 10} ${unit}${i === values.length - 1 ? ' so far' : ''}`,
       parts: [{ v, colour: i === values.length - 1 ? `${colour}66` : colour }],
     }));
-    return figure(title, `<span class="note">Last ${DAYS} days · ${avg >= 10 ? avg.toFixed(0) : avg.toFixed(1)} ${unit} a day on average</span>`,
+    const average = counted.length ? `${avg >= 10 ? avg.toFixed(0) : avg.toFixed(1)} ${unit} a day on average` : 'no full days yet';
+    return figure(title, `<span class="note">Last ${DAYS} days · ${average}</span>`,
       barChart(bars, dayLabels(dates), full ? 180 : 140), Boolean(full));
   }
 
@@ -1418,6 +1439,9 @@ function duration(ms) {
   return minutes % 60 ? `${h} h ${minutes % 60} min` : `${h} h`;
 }
 
+// 1.25 (hours, as history_stats gives them) -> "1 h 15 min"; '' under a minute.
+const hoursText = (hours) => (num(hours) === null ? '' : duration(num(hours) * 3600000));
+
 const dayFraction = () => {
   const now = new Date();
   return (now.getHours() * 3600 + now.getMinutes() * 60) / 86400;
@@ -1520,6 +1544,11 @@ function lineChart(data, series, opts = {}) {
     return `<polyline points="${pts.join(' ')}" fill="none" stroke="${s.colour}" stroke-width="${s.width || 2.5}"
       ${s.dash ? 'stroke-dasharray="6 5"' : ''} stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>`;
   }).join('');
+  // Full-height shading behind the lines, for [start, end] spans in ms.
+  const bands = (opts.bands || []).filter(([a, b]) => b > from && a < to).map(([a, b]) => {
+    const left = Number(x(a));
+    return `<rect x="${left}" y="0" width="${Math.max(Number(x(b)) - left, 1)}" height="${H}" fill="${BAND}"></rect>`;
+  }).join('');
   const label = (v) => (opts.thousands && v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v * 10) / 10}${opts.unit ?? ''}`);
   const yTicks = [max, min + ((max - min) * 2) / 3, min + (max - min) / 3, min];
   const ticks = [];
@@ -1542,7 +1571,7 @@ function lineChart(data, series, opts = {}) {
     <div class="y-axis">${yTicks.map((v) => `<span>${esc(label(v))}</span>`).join('')}</div>
     <div class="plot-col">
       <div class="plot">
-        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(opts.label || '')}">${lines}</svg>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(opts.label || '')}">${bands}${lines}</svg>
         ${nowLine}
       </div>
       <div class="x-axis">${ticks.map(([left, text]) => `<span style="left:${left}%">${esc(text)}</span>`).join('')}</div>
