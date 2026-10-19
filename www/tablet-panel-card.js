@@ -292,16 +292,20 @@ class TabletPanelCard extends HTMLElement {
     const boiler = action === 'heating' ? 'Boiler heating' : action ? `Boiler ${action}` : '';
     const overridden = holdTs > nowTs || pauseTs > nowTs;
 
+    // −/+ are off during a boost: they step from the schedule's target, not the
+    // 25 on show, and the hold they start would only apply once the boost ends.
+    const stepOff = boosting ? 'disabled' : '';
+
     return `<section class="tile heating" aria-label="Heating">
       <div class="heat-main">
         <div class="row"><span class="label">Heating</span><span class="muted">${esc(boiler)}</span></div>
         <div class="stepper">
-          <button class="round" data-action="step" data-delta="-0.5" aria-label="Lower target by half a degree">−</button>
+          <button class="round" data-action="step" data-delta="-0.5" aria-label="Lower target by half a degree" ${stepOff}>−</button>
           <div class="target">
             <div class="mono target-value ${this._pending !== null ? 'pending' : ''}">${shown === null ? '—' : `${shown.toFixed(1)}°`}</div>
             <div class="muted">${esc(mode)}</div>
           </div>
-          <button class="round" data-action="step" data-delta="0.5" aria-label="Raise target by half a degree">+</button>
+          <button class="round" data-action="step" data-delta="0.5" aria-label="Raise target by half a degree" ${stepOff}>+</button>
         </div>
         ${this._scheduleBar(setback)}
       </div>

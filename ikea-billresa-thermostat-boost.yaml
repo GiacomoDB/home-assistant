@@ -46,9 +46,13 @@ blueprint:
 variables:
   boost_minutes: !input boost_minutes
 
+# Not on unavailable/unknown: a remote dropping out and coming back is a state
+# change too, and would boost without a press.
 trigger:
   - platform: state
     entity_id: !input button
+    not_from: ["unavailable", "unknown"]
+    not_to: ["unavailable", "unknown"]
 
 condition:
   - condition: state

@@ -41,8 +41,9 @@ blocks is blocked for every device.
 
 **Heating**: the controls for `packages/heating.yaml`. A status line, the
 target, a slider that holds a temperature until the next block, Boost /
-Cancel boost / Resume tiles, 24 hours of target vs bedroom vs what was sent to
-tado, and the details (bias, setback, the Live switch).
+Cancel boost / Resume tiles, 24 hours of target vs bedroom vs the computed
+setpoint vs what tado is actually set to, and the details (bias, setback, the
+Live switch).
 
 **Appliances**: stats for the SmartThings washer, dryer and robot vacuum, no
 controls. A status line each, cycles and kWh this month, the last cycle's
@@ -71,7 +72,8 @@ HA's header and sidebar, so the same dashboard opens normally elsewhere.
 Seven pages for checking and changing things at a desk, with a sidebar of
 their own: **Home** (heating controls, rooms, lights, a summary of each other
 page, 24 hours of room temperatures), **Heating** (controls, the live switch,
-what the controller sees and sends, 24 hours of target vs bedroom vs sent,
+what the controller sees and computes, 24 hours of target vs bedroom vs
+computed vs what tado is set to,
 today's blocks and the week's schedule), **Cat** (fountain, drinking, litter
 box, today against yesterday, 31 days of water, sessions and visits),
 **Energy** (kWh per measured device by day and month, and a unit rate box that

@@ -189,7 +189,7 @@ class LaptopDashboardCard extends HTMLElement {
     }
     if (page === 'heating') {
       r.push({ name: 'heat24', kind: 'history', hours: 24,
-        ids: [h.target_entity, h.reference_entity, h.setpoint_entity] });
+        ids: [h.target_entity, h.reference_entity, h.setpoint_entity, h.tado_setpoint_entity] });
     }
     if (page === 'cat') {
       const cat = c.cat || {};
@@ -455,15 +455,18 @@ class LaptopDashboardCard extends HTMLElement {
     };
   }
 
+  // −/+ are off during a boost: they step from the schedule's target, not the
+  // 25 on show, and the hold they start would only apply once the boost ends.
   _heatControl(big, between = '') {
     const s = this._heatingState();
+    const off = s.boosting ? 'disabled' : '';
     return `<div class="stepper ${big ? 'big' : ''}">
-        <button class="round" data-action="step" data-delta="-0.5" aria-label="Lower target by half a degree">−</button>
+        <button class="round" data-action="step" data-delta="-0.5" aria-label="Lower target by half a degree" ${off}>−</button>
         <div class="target">
           <div class="target-value ${this._pending !== null ? 'pending' : ''}">${s.shown === null ? '—' : `${s.shown.toFixed(1)}°`}</div>
           <div class="muted">${esc(s.mode)}${s.live ? '' : ' · shadow mode'}</div>
         </div>
-        <button class="round" data-action="step" data-delta="0.5" aria-label="Raise target by half a degree">+</button>
+        <button class="round" data-action="step" data-delta="0.5" aria-label="Raise target by half a degree" ${off}>+</button>
       </div>
       ${between}
       <div class="pair">
@@ -481,7 +484,10 @@ class LaptopDashboardCard extends HTMLElement {
     const facts = [
       ['Bedroom', ref?.attributes.source ? `from the ${ref.attributes.source}` : '', deg(this._value(h.reference_entity))],
       ['tado reads', 'the thermostat’s own sensor', deg(climate?.attributes.current_temperature)],
-      [s.live ? 'Sent to tado' : 'Would send to tado', setpoint?.attributes.reason || '', deg(this._value(h.setpoint_entity))],
+      // Computed is what HA wants; tado set to is what it is at. They differ
+      // in shadow mode and during a pause from the dial or app.
+      ['Computed setpoint', setpoint?.attributes.reason || '', deg(this._value(h.setpoint_entity))],
+      ['tado set to', 'its setpoint now', deg(this._value(h.tado_setpoint_entity))],
       ['Bias', 'tado minus bedroom, capped at ±3°', deg(this._value(h.bias_entity))],
       ['Boiler', 'as tado reports it', s.boiler ? s.boiler[0].toUpperCase() + s.boiler.slice(1) : '—'],
       ['Setback', 'between blocks', deg(s.setback)],
@@ -504,7 +510,8 @@ class LaptopDashboardCard extends HTMLElement {
   _heatChart() {
     const h = this._config.heating;
     const series = [
-      { id: h.setpoint_entity, name: this._heatingState().live ? 'Sent to tado' : 'Would send', colour: C.grey, step: true, width: 2 },
+      { id: h.setpoint_entity, name: 'Computed', colour: C.grey, step: true, width: 2 },
+      { id: h.tado_setpoint_entity, name: 'tado set to', colour: C.ink, step: true, dash: true },
       { id: h.target_entity, name: 'Target', colour: C.water, step: true },
       { id: h.reference_entity, name: 'Bedroom', colour: C.heat },
     ];

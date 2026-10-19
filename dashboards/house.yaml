@@ -12,6 +12,7 @@ heating:
   target_entity: sensor.heating_desired_target
   reference_entity: sensor.heating_reference_temperature
   setpoint_entity: sensor.heating_computed_setpoint
+  tado_setpoint_entity: sensor.heating_tado_setpoint
   bias_entity: sensor.heating_bias
   manual_entity: input_number.heating_manual_target
   boost_entity: timer.heating_boost

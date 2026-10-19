@@ -151,13 +151,14 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | `sensor.heating_desired_target` | `packages/heating.yaml` | The manual target during a hold, else the current block's target, or the setback outside blocks |
 | `sensor.heating_reference_temperature` | `packages/heating.yaml` | The bedroom sensor, in and out of blocks. When it's down or silent for 2 h, tado's own reading stands in (`source` attribute says which) |
 | `sensor.heating_bias` | `packages/heating.yaml` | tado reading − bedroom, clamped ±3; 0 while tado's reading stands in |
-| `sensor.heating_computed_setpoint` | `packages/heating.yaml` | What tado is sent: desired + bias, rounded to 0.5, or 25 during a boost. `reason` attribute: schedule / setback / manual hold / boost / manual override / shadow mode |
-| `input_boolean.heating_controller_enabled` | `packages/heating.yaml` | Off = shadow mode: computes and logs, never writes |
+| `sensor.heating_computed_setpoint` | `packages/heating.yaml` | What HA sends tado (or would, in shadow mode or a pause): desired + bias, rounded to 0.5, or 25 during a boost. `reason` attribute: schedule / setback / manual hold / boost / manual override / shadow mode |
+| `sensor.heating_tado_setpoint` | `packages/heating.yaml` | What tado is actually set to (`climate.heating`'s `temperature`), plotted next to the computed setpoint. They differ in shadow mode and during a pause |
+| `input_boolean.heating_controller_enabled` | `packages/heating.yaml` | Off = shadow mode: computes and logs, never writes. Turning it off leaves tado on the last setpoint sent |
 | `input_number.heating_setback` | `packages/heating.yaml` | Target outside blocks; reset to 16 on restart |
 | `input_number.heating_last_written` | `packages/heating.yaml` | Bookkeeping: last setpoint sent, so the bridge's echo isn't taken as a manual change |
 | `input_number.heating_manual_target` | `packages/heating.yaml` | The dashboard's manual control. Follows the current target on its own; when a person moves it, that target is held, measured in the bedroom, until the next block |
 | `input_datetime.heating_hold_until` | `packages/heating.yaml` | End of the current dashboard hold (the next block) |
-| `input_datetime.heating_override_until` | `packages/heating.yaml` | A change from the tado dial or app pauses the controller until this time (the next block) |
+| `input_datetime.heating_override_until` | `packages/heating.yaml` | A change from the tado dial or app pauses the controller until this time (the next block). Cleared by a hold, a boost or Resume |
 | `timer.heating_boost` | `packages/heating.yaml` | Running = 25 °C boost. Started from the dashboard's Boost button |
 | `script.heating_resume` | `packages/heating.yaml` | Ends a hold or a pause now |
 | `sensor.washing_machine_status`, `sensor.tumble_dryer_status`, `sensor.robot_vacuum_status` | `packages/appliances.yaml` | One line per device for the Appliances view, e.g. "Rinsing · done at 15:27", "Docked, charging · 100%" |

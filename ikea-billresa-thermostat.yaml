@@ -84,12 +84,19 @@ blueprint:
           min: 20
           max: 30
 
+# An event entity going unavailable, or coming back with its last event's
+# timestamp, is a state change too: without not_from/not_to every dropout of
+# the remote would step the thermostat.
 trigger:
   - platform: state
     entity_id: !input scrollwheel_right_event_entity
+    not_from: ["unavailable", "unknown"]
+    not_to: ["unavailable", "unknown"]
     id: "right_scroll"
   - platform: state
     entity_id: !input scrollwheel_left_event_entity
+    not_from: ["unavailable", "unknown"]
+    not_to: ["unavailable", "unknown"]
     id: "left_scroll"
 
 action:

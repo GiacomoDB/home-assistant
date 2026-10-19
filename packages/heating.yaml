@@ -52,6 +52,7 @@
 # bedroom sensor. So 22 means "the bedroom at 22", not "tado's spot in the
 # living room at 22". Boost (`timer.heating_boost`, 25 for 15 minutes) and
 # `script.heating_resume` (ends a hold or a pause now) are dashboard buttons too.
+# A boost also ends a pause (below), so the schedule takes over when it ends.
 #
 # A change made anywhere else -- the tado dial, the tado app, the climate
 # entity's own dialog -- or the mode leaving `heat` PAUSES the controller until
@@ -63,8 +64,13 @@
 # SHADOW MODE
 # `input_boolean.heating_controller_enabled` is off until you turn it on. While
 # off, the sensors show what the controller would do and the logbook records
-# each write it would have made, but nothing is sent to tado. The tado schedule
-# keeps running meanwhile. Leave it a day or two, then turn it on.
+# each schedule-boundary write it would have made, but nothing is sent to tado.
+# Leave it a day or two, then turn it on.
+#
+# The tado schedule only keeps running if HA has never written. Every write is
+# a manual overlay "until you cancel", so turning Live off later leaves tado on
+# the last setpoint HA sent (25 if a boost was running) until you press
+# "resume schedule" in the tado app.
 #
 # SAFETY NET
 # Keep a plain schedule in the tado app (e.g. 18 day / 16 night). With manual
@@ -133,14 +139,15 @@ input_number:
   # The dashboard's manual control. Moving it starts a hold; see MANUAL CONTROL.
   heating_manual_target:
     name: Heating manual target
-    min: 14
+    # As low as heating_setback goes, so the slider can always show the target.
+    min: 12
     max: 24
     step: 0.5
     unit_of_measurement: "°C"
     mode: slider
     icon: mdi:circle
   # Bookkeeping, not a control: the last setpoint the controller sent. See
-  # MANUAL CHANGES above.
+  # MANUAL CONTROL IS ON THE DASHBOARD above.
   heating_last_written:
     name: Heating last written setpoint
     min: 5
@@ -300,6 +307,16 @@ template:
             {%- else -%} setback
             {%- endif -%}
 
+      # What tado is actually set to, for the dashboards to plot next to the
+      # computed setpoint: the two differ during a pause and in shadow mode.
+      - name: Heating tado setpoint
+        unique_id: heating_tado_setpoint
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ state_attr('climate.heating', 'temperature') }}"
+        availability: "{{ state_attr('climate.heating', 'temperature') is number }}"
+
 automation:
   - id: heating_controller
     alias: "Heating: apply setpoint"
@@ -333,7 +350,8 @@ automation:
         value_template: >-
           {{ states('climate.heating') not in ['unavailable', 'unknown']
              and states('sensor.heating_computed_setpoint') | is_number }}
-      # A boost overrides a manual pause; nothing else does.
+      # A boost overrides a manual pause; nothing else does. heating_boost
+      # also clears the pause, but this run may land before that does.
       - condition: template
         value_template: >-
           {{ is_state('timer.heating_boost', 'active')
@@ -345,9 +363,11 @@ automation:
           current: "{{ state_attr('climate.heating', 'temperature') | float(0) }}"
           heating: "{{ is_state('climate.heating', 'heat') }}"
           gap: "{{ (setpoint - current) | abs }}"
+          # last_reported, not last_changed: writing the same value again is
+          # still a write.
           since_write: >-
             {% set s = states.input_number.heating_last_written %}
-            {{ (now() - s.last_changed).total_seconds() if s else 999999 }}
+            {{ (now() - s.last_reported).total_seconds() if s else 999999 }}
           # Only bias drift is held back by the hysteresis; a new block, boost,
           # hold, Live or a pause ending is sent straight away.
           kind: >-
@@ -441,6 +461,23 @@ automation:
         data:
           timestamp: 0
 
+  # A boost ends a pause from the dial or the tado app. Without this, the
+  # controller could write 25 through the pause but not write anything when
+  # the boost ended, leaving tado at 25 until the next block.
+  - id: heating_boost
+    alias: "Heating: a boost ends a pause"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: timer.heating_boost
+        to: active
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.heating_override_until
+        data:
+          timestamp: 0
+
   # Keeps the slider showing the current target, so it never sits at a stale
   # value. No user_id on these changes, so heating_hold ignores them.
   - id: heating_slider_sync
@@ -462,7 +499,7 @@ automation:
         target:
           entity_id: input_number.heating_manual_target
         data:
-          value: "{{ [[states('sensor.heating_desired_target') | float, 24] | min, 14] | max }}"
+          value: "{{ [[states('sensor.heating_desired_target') | float, 24] | min, 12] | max }}"
 
   - id: heating_manual_override
     alias: "Heating: manual change pauses the schedule"

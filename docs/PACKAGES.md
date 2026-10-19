@@ -35,8 +35,10 @@ hours, and tado is sent `target + (tado reading − bedroom reading)`.
 
 Controlled from the dashboard's **Heating** view: a slider holds a temperature
 until the next block, plus Boost / Cancel / Resume. Changes from the tado dial
-or app pause it until the next block. It starts in shadow mode, and needs the
-HomeKit thermostat renamed to `climate.heating`; see the file header.
+or app pause it until the next block; a boost ends the pause. It starts in
+shadow mode, and needs the HomeKit thermostat renamed to `climate.heating`;
+see the file header. Turning Live off after it has written leaves tado on the
+last setpoint until "resume schedule" in the tado app.
 
 ## Sensors for the dashboards
 

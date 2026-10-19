@@ -533,6 +533,8 @@ views:
 
             # Raw states, not statistics: the target is a step function and
             # averaging would smear the block edges.
+            # Computed is what HA wants tado at; tado set to is what it is
+            # at. They differ in shadow mode and during a pause.
             - type: history-graph
               title: Last 24 hours
               hours_to_show: 24
@@ -542,7 +544,9 @@ views:
                 - entity: sensor.heating_reference_temperature
                   name: Bedroom
                 - entity: sensor.heating_computed_setpoint
-                  name: Sent to tado
+                  name: Computed
+                - entity: sensor.heating_tado_setpoint
+                  name: tado set to
 
             - type: entities
               title: Details
@@ -552,7 +556,9 @@ views:
                 - entity: sensor.heating_bias
                   name: Bias (tado − bedroom)
                 - entity: sensor.heating_computed_setpoint
-                  name: Sent to tado
+                  name: Computed setpoint
+                - entity: sensor.heating_tado_setpoint
+                  name: tado set to
                 - entity: input_number.heating_setback
                   name: Setback (between blocks)
                 - entity: input_boolean.heating_controller_enabled
