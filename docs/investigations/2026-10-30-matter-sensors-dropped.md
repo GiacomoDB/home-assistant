@@ -133,4 +133,10 @@ bathroom to the hall.
 - **If ALPSTUGA freezes again**, it's the device: a smart plug that
   power-cycles it after 10 minutes unavailable would make it self-healing,
   and it's worth reporting to IKEA with its firmware version.
-- Matter Server add-on 9.3.0 is out (running 9.2.0). Unrelated, but pending.
+- The Matter Server add-on went from 9.2.0 to 9.3.0 (matter.js 0.17.9 → 0.18.0)
+  the same day, after both drops. If they recur, that's a variable that changed.
+- **First flight-recorder snapshot**, 12:00: all four routers on one partition
+  (2133470835, Badjour leading), Hall timmer still unreachable and orphaned.
+  Note that `orphans` also lists the devices under the Aqara hub (KLIPPBOK,
+  LivRoom, Bathroom, Babyroom), since its table can't be read; what matters is
+  a device joining or leaving that list.
