@@ -1,9 +1,10 @@
 # Two Matter sensors dropped off Thread, 2026-10-30
 
-**Status:** open. ALPSTUGA fixed by a power cycle. Hall timmer still
-offline: the sensor factory-reset and re-paired as "Hall timmer" at 12:06 was
-the **living room** one (see [the mix-up](#the-mix-up)). As of 2026-10-30
-12:50 UTC.
+**Status:** open. ALPSTUGA fixed by a power cycle. The two TIMMERFLOTTEs
+called "Hall timmer" and "LivRoom timmer" turned out to have had their **names
+swapped since they were paired in April** (see [Swapped names](#swapped-names)):
+the sensor that dropped is in the living room, and still needs a reset and
+re-pair. As of 2026-10-30 13:00 UTC.
 
 All times UTC, which is also UK local time since the clocks went back on
 Oct 25.
@@ -35,11 +36,11 @@ isn't on HA's Matter fabric, so its own tables can't be read.
 | 8 (`@1:8`) | ALPSTUGA | Router |
 | 13 (`@1:d`) | GRILLPLATS plug | Router |
 | 10 (`@1:a`) | Lampada Cucina | REED, when powered |
-| 14 (`@1:e`) | Hall timmer | Sleepy, child of **Badjour** at −87 dBm, LQI 2. Removed from HA at ~12:05; the sensor itself is still unpaired |
+| 14 (`@1:e`) | "Hall timmer", **physically in the living room** | Sleepy, child of **Badjour** at −87 dBm, LQI 2. Removed from HA at ~12:05; the sensor itself is still unpaired |
 | 18 (`@1:12`) | Kitchen timme | Sleepy, child of Badjour at −93 dBm, **LQI 1** |
 | 29 (`@1:1d`) | Babyroom timme | Sleepy, child of ALPSTUGA at −92 dBm, LQI 1 (moved elsewhere when ALPSTUGA dropped) |
 | 5, 6 | Occupancy (MYGGSPRAY), BILRESA scroll wheel | Sleepy, children of Badjour, good links |
-| 9, 15, 16 | KLIPPBOK leak sensor, LivRoom and Bathroom timmers | Sleepy, under the Aqara hub (from their own, older tables). Node 15's sensor is now node 30 |
+| 9, 15, 16 | KLIPPBOK leak sensor, "LivRoom timmer" (**physically in the hall**), Bathroom timmer | Sleepy, under the Aqara hub (from their own, older tables). Node 15's sensor is now node 30, "Hall timmer" |
 
 LQI runs 0–3. Anything at LQI 1, or below about −85 dBm, is on the edge.
 
@@ -61,20 +62,27 @@ LQI runs 0–3. Anything at LQI 1, or below about −85 dBm, is on the edge.
 - **~11:16**: both power-cycled by hand. ALPSTUGA is back at **11:17** (boot
   reason *power on*, reboot count 18). Hall timmer doesn't come back.
 - **11:25**: still no router claims Hall timmer, and ping still fails.
-- **11:49**: the **living room** sensor (node 15) gets fresh batteries:
-  2.55 V → 2.89 V, 54% → 100%. Back online at 11:50.
+- **11:49**: the sensor in the hall (node 15, then called "LivRoom timmer")
+  gets fresh batteries: 2.55 V → 2.89 V, 54% → 100%. It had never dropped, so
+  this couldn't bring back the offline "Hall timmer".
 - **~12:05**: the Hall timmer device (node 14) is removed from HA.
-- **12:06:11**: a TIMMERFLOTTE is commissioned as node 30 (`@1:1e`) and named
-  "Hall timmer". It joins as a child of the GRILLPLATS plug at −65 dBm, LQI 3.
+- **12:06:11**: the hall sensor, factory-reset, is commissioned as node 30
+  (`@1:1e`) and named "Hall timmer". It joins as a child of the GRILLPLATS plug at −65 dBm, LQI 3.
   Entity IDs renamed to the hall's `_3` ones by 12:09.
-- **12:06:24**: node 15, LivRoom timmer, stops acknowledging. Subscription
+- **12:06:24**: node 15, "LivRoom timmer", stops acknowledging, because its
+  sensor has just been reset. Subscription
   times out at 12:08, unavailable at 12:15.
 - **12:46**: LivRoom timmer reported as dropped. The flight recorder shows no
   router reboot, no partition change, and LivRoom under the Aqara hub (never
   claimed by a readable router) throughout, so nothing on the mesh explains
   it. Node 30's Matter unique ID (`0/40/18`) is `0af6c730…2e85`, the same as
-  node 15's: **node 30 is the living room sensor.** Its last living room
-  reading (21.56 °C at 12:03) is node 30's first.
+  node 15's (node 14's was `c70158f2…a616`): node 30 is node 15's sensor,
+  reset. Its last reading as node 15 (21.56 °C at 12:03) is node 30's first.
+- **~13:00**: the sensor that was reset is the one in the hall, so node 15's
+  name was wrong. Checked against tado's thermostat, which measures the living
+  room, over the 10 days before the drop: node 14 ("Hall") tracks it closely
+  (correlation 0.89, 0.19° apart), node 15 ("LivRoom") doesn't (0.43, 0.86°),
+  no closer than the other rooms. **The two names were swapped.**
 
 ## What we checked
 
@@ -114,30 +122,38 @@ wasn't switched off. Either it can't hear any router from where it sits, or
 it's stuck in a state a reboot doesn't clear. The test below tells those two
 apart.
 
-## The mix-up
+## Swapped names
 
-The TIMMERFLOTTEs look identical. The sensor that got new batteries at 11:49
-and the factory reset at 12:06 was the living room one, so:
+Since the sensors were paired on Apr 30, HA's "Hall timmer" (node 14,
+entities `_3`) has been the sensor **in the living room**, and "LivRoom
+timmer" (node 15, `_4`) the one **in the hall**. So:
 
-- "Hall timmer" in HA (node 30, entities `_3`) is physically the **living room**
-  sensor. The hall series has living room readings from 12:07.
-- "LivRoom timmer" (node 15, entities `_4`) is dead: its sensor was reset.
-- The **real Hall timmer** was never reset. HA has forgotten it, so it needs a
-  factory reset and re-pair anyway. Which sensor got the 11:16 battery reseat
-  isn't known, so whether the hall one would have come back from a reseat is
-  open too.
+- The sensor that dropped at 04:24 is in the living room.
+- The battery change and reset went to the sensor in the hall, which was
+  working. The reset took "LivRoom timmer" off the air at 12:06.
+- Node 30, now "Hall timmer" with the `_3` IDs, really is the hall sensor, so
+  that name is now right.
+- Six months of history are swapped: the `_3` ("Hall") series is the living
+  room until 04:24 today and the hall from 12:07, and `_4` the other way round.
+  `packages/bath_humidity.yaml` has been comparing the bathroom against the
+  living room, not the hall. Long-term statistics can't be relabelled.
 
-Before resetting a sensor, press its **Identify** button in HA and check that
-it's the one that blinks. An offline sensor can't do that, so instead, find
-every sensor that *does* blink and rule those out. Labelling them would help.
+How this was found matters for next time. The Matter unique ID (`0/40/18`)
+survives a factory reset, so it says which HA device a physical sensor used
+to be. A room's temperature history, against a reference known to be in that
+room, says where a sensor actually is. Before resetting a sensor, press
+**Identify** on it in HA and check that the one that blinks is the one in your
+hand. An offline sensor can't blink, so rule out the ones that do.
 
 ## Fix
 
 - ALPSTUGA: power cycle. Worked.
-- Hall timmer: still to do. Make node 30 the living room sensor again (remove
-  node 15, rename node 30's entities `_3` → `_4`, name it LivRoom timmer), then
-  factory-reset the real Hall timmer, pair it, and rename its entities to
-  `_3`.
+- The sensor in the living room (the one that dropped): still to do. Remove
+  the dead "LivRoom timmer" device (node 15) to free `_4`, factory-reset the
+  living room sensor, pair it as "LivRoom timmer", and rename its entities to
+  `_4`. Node 30 stays "Hall timmer", `_3`.
+- Press Identify on every other sensor and check the right room blinks, in
+  case these weren't the only two swapped.
 
   How to re-pair a sensor and keep its entity IDs and history:
   1. Remove the old device (Matter → device → ⋮ → Remove device), so its
