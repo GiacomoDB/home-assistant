@@ -1,7 +1,9 @@
 # Two Matter sensors dropped off Thread, 2026-10-30
 
-**Status:** resolved. ALPSTUGA fixed by a power cycle; Hall timmer by a
-factory reset and re-pair. As of 2026-10-30 12:10 UTC.
+**Status:** open. ALPSTUGA fixed by a power cycle. Hall timmer still
+offline: the sensor factory-reset and re-paired as "Hall timmer" at 12:06 was
+the **living room** one (see [the mix-up](#the-mix-up)). As of 2026-10-30
+12:50 UTC.
 
 All times UTC, which is also UK local time since the clocks went back on
 Oct 25.
@@ -33,11 +35,11 @@ isn't on HA's Matter fabric, so its own tables can't be read.
 | 8 (`@1:8`) | ALPSTUGA | Router |
 | 13 (`@1:d`) | GRILLPLATS plug | Router |
 | 10 (`@1:a`) | Lampada Cucina | REED, when powered |
-| 14 (`@1:e`) | Hall timmer | Sleepy, child of **Badjour** at −87 dBm, LQI 2. Removed; re-paired as node 30 (`@1:1e`) |
+| 14 (`@1:e`) | Hall timmer | Sleepy, child of **Badjour** at −87 dBm, LQI 2. Removed from HA at ~12:05; the sensor itself is still unpaired |
 | 18 (`@1:12`) | Kitchen timme | Sleepy, child of Badjour at −93 dBm, **LQI 1** |
 | 29 (`@1:1d`) | Babyroom timme | Sleepy, child of ALPSTUGA at −92 dBm, LQI 1 (moved elsewhere when ALPSTUGA dropped) |
 | 5, 6 | Occupancy (MYGGSPRAY), BILRESA scroll wheel | Sleepy, children of Badjour, good links |
-| 9, 15, 16 | KLIPPBOK leak sensor, LivRoom and Bathroom timmers | Sleepy, under the Aqara hub (from their own, older tables) |
+| 9, 15, 16 | KLIPPBOK leak sensor, LivRoom and Bathroom timmers | Sleepy, under the Aqara hub (from their own, older tables). Node 15's sensor is now node 30 |
 
 LQI runs 0–3. Anything at LQI 1, or below about −85 dBm, is on the edge.
 
@@ -59,9 +61,20 @@ LQI runs 0–3. Anything at LQI 1, or below about −85 dBm, is on the edge.
 - **~11:16**: both power-cycled by hand. ALPSTUGA is back at **11:17** (boot
   reason *power on*, reboot count 18). Hall timmer doesn't come back.
 - **11:25**: still no router claims Hall timmer, and ping still fails.
-- **12:06**: Hall timmer factory-reset and re-paired, as node 30 (`@1:1e`).
-  It joins as a child of the GRILLPLATS plug at −65 dBm, LQI 3. Entity IDs
-  renamed back to the `_3` ones by 12:09.
+- **11:49**: the **living room** sensor (node 15) gets fresh batteries:
+  2.55 V → 2.89 V, 54% → 100%. Back online at 11:50.
+- **~12:05**: the Hall timmer device (node 14) is removed from HA.
+- **12:06:11**: a TIMMERFLOTTE is commissioned as node 30 (`@1:1e`) and named
+  "Hall timmer". It joins as a child of the GRILLPLATS plug at −65 dBm, LQI 3.
+  Entity IDs renamed to the hall's `_3` ones by 12:09.
+- **12:06:24**: node 15, LivRoom timmer, stops acknowledging. Subscription
+  times out at 12:08, unavailable at 12:15.
+- **12:46**: LivRoom timmer reported as dropped. The flight recorder shows no
+  router reboot, no partition change, and LivRoom under the Aqara hub (never
+  claimed by a readable router) throughout, so nothing on the mesh explains
+  it. Node 30's Matter unique ID (`0/40/18`) is `0af6c730…2e85`, the same as
+  node 15's: **node 30 is the living room sensor.** Its last living room
+  reading (21.56 °C at 12:03) is node 30's first.
 
 ## What we checked
 
@@ -101,17 +114,32 @@ wasn't switched off. Either it can't hear any router from where it sits, or
 it's stuck in a state a reboot doesn't clear. The test below tells those two
 apart.
 
+## The mix-up
+
+The TIMMERFLOTTEs look identical. The sensor that got new batteries at 11:49
+and the factory reset at 12:06 was the living room one, so:
+
+- "Hall timmer" in HA (node 30, entities `_3`) is physically the **living room**
+  sensor. The hall series has living room readings from 12:07.
+- "LivRoom timmer" (node 15, entities `_4`) is dead: its sensor was reset.
+- The **real Hall timmer** was never reset. HA has forgotten it, so it needs a
+  factory reset and re-pair anyway. Which sensor got the 11:16 battery reseat
+  isn't known, so whether the hall one would have come back from a reseat is
+  open too.
+
+Before resetting a sensor, press its **Identify** button in HA and check that
+it's the one that blinks. An offline sensor can't do that, so instead, find
+every sensor that *does* blink and rule those out. Labelling them would help.
+
 ## Fix
 
 - ALPSTUGA: power cycle. Worked.
-- Hall timmer: a battery reseat didn't work. A **factory reset and re-pair**
-  did. It came back as node 30 under the GRILLPLATS plug, with a strong link
-  (−65 dBm, LQI 3), where before it hung off Badjour at −87 dBm. That a reset
-  fixed what a reboot didn't points at the device having been stuck rather
-  than simply out of range, but whether it stays healthy back on the hall wall
-  is for the flight recorder to show.
+- Hall timmer: still to do. Make node 30 the living room sensor again (remove
+  node 15, rename node 30's entities `_3` → `_4`, name it LivRoom timmer), then
+  factory-reset the real Hall timmer, pair it, and rename its entities to
+  `_3`.
 
-  How the re-pair kept everything working, for next time:
+  How to re-pair a sensor and keep its entity IDs and history:
   1. Remove the old device (Matter → device → ⋮ → Remove device), so its
      entity IDs are free.
   2. Pair the reset sensor, name the device and set its area. Say **no** when
@@ -145,6 +173,9 @@ apart.
   and it's worth reporting to IKEA with its firmware version.
 - The Matter Server add-on went from 9.2.0 to 9.3.0 (matter.js 0.17.9 → 0.18.0)
   the same day, after both drops. If they recur, that's a variable that changed.
+- **The flight recorder's blind spot** showed straight away: LivRoom timmer
+  sits under the Aqara hub, whose tables can't be read, so the recorder had
+  nothing on its link. The Matter server log and the unique IDs solved it.
 - **First flight-recorder snapshot**, 12:00: all four routers on one partition
   (2133470835, Badjour leading), Hall timmer still unreachable and orphaned.
   Note that `orphans` also lists the devices under the Aqara hub (KLIPPBOK,
