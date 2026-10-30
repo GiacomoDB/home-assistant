@@ -38,7 +38,7 @@ What's still open, and anything added so the next one is easier.
 
 | Date | What | Status |
 |---|---|---|
-| 2026-10-30 | [Two Matter sensors dropped off Thread](2026-10-30-matter-sensors-dropped.md): ALPSTUGA froze, Hall timmer lost its parent | ALPSTUGA fixed; Hall timmer open |
+| 2026-10-30 | [Two Matter sensors dropped off Thread](2026-10-30-matter-sensors-dropped.md): ALPSTUGA froze, Hall timmer lost its parent. Includes how to re-pair a Matter device and keep its entity IDs and history | Resolved |
 
 ## Toolbox
 

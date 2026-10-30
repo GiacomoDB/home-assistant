@@ -1,7 +1,7 @@
 # Two Matter sensors dropped off Thread, 2026-10-30
 
-**Status:** ALPSTUGA fixed by a power cycle. Hall timmer still offline after
-a battery reseat; next step below. As of 2026-10-30 11:30 UTC.
+**Status:** resolved. ALPSTUGA fixed by a power cycle; Hall timmer by a
+factory reset and re-pair. As of 2026-10-30 12:10 UTC.
 
 All times UTC, which is also UK local time since the clocks went back on
 Oct 25.
@@ -33,7 +33,7 @@ isn't on HA's Matter fabric, so its own tables can't be read.
 | 8 (`@1:8`) | ALPSTUGA | Router |
 | 13 (`@1:d`) | GRILLPLATS plug | Router |
 | 10 (`@1:a`) | Lampada Cucina | REED, when powered |
-| 14 (`@1:e`) | Hall timmer | Sleepy, child of **Badjour** at −87 dBm, LQI 2 |
+| 14 (`@1:e`) | Hall timmer | Sleepy, child of **Badjour** at −87 dBm, LQI 2. Removed; re-paired as node 30 (`@1:1e`) |
 | 18 (`@1:12`) | Kitchen timme | Sleepy, child of Badjour at −93 dBm, **LQI 1** |
 | 29 (`@1:1d`) | Babyroom timme | Sleepy, child of ALPSTUGA at −92 dBm, LQI 1 (moved elsewhere when ALPSTUGA dropped) |
 | 5, 6 | Occupancy (MYGGSPRAY), BILRESA scroll wheel | Sleepy, children of Badjour, good links |
@@ -59,6 +59,9 @@ LQI runs 0–3. Anything at LQI 1, or below about −85 dBm, is on the edge.
 - **~11:16**: both power-cycled by hand. ALPSTUGA is back at **11:17** (boot
   reason *power on*, reboot count 18). Hall timmer doesn't come back.
 - **11:25**: still no router claims Hall timmer, and ping still fails.
+- **12:06**: Hall timmer factory-reset and re-paired, as node 30 (`@1:1e`).
+  It joins as a child of the GRILLPLATS plug at −65 dBm, LQI 3. Entity IDs
+  renamed back to the `_3` ones by 12:09.
 
 ## What we checked
 
@@ -101,18 +104,25 @@ apart.
 ## Fix
 
 - ALPSTUGA: power cycle. Worked.
-- Hall timmer: battery reseat. Didn't work. **Next:** bring it next to the
-  GRILLPLATS plug or Badjour, reseat the battery, wait a few minutes.
-  - **If it rejoins:** it's range. It needs a mains Thread device between it
-    and Badjour (a smart plug in the hall), or it will keep dropping.
-  - **If it doesn't, even next to a router:** factory-reset and re-pair. That
-    makes new entity IDs; remove the old device in HA and rename the new
-    entities to the old IDs (`sensor.timmerflotte_temp_hmd_sensor_temperature_3`,
-    `_humidity_3`, ...), so the dashboards, `packages/bath_humidity.yaml` and
-    the UI automation *Keep IKEA Thread sensors alive* need no change.
+- Hall timmer: a battery reseat didn't work. A **factory reset and re-pair**
+  did. It came back as node 30 under the GRILLPLATS plug, with a strong link
+  (−65 dBm, LQI 3), where before it hung off Badjour at −87 dBm. That a reset
+  fixed what a reboot didn't points at the device having been stuck rather
+  than simply out of range, but whether it stays healthy back on the hall wall
+  is for the flight recorder to show.
 
-While Hall timmer is out, the bath humidity alert can't fire: it compares the
-bathroom to the hall.
+  How the re-pair kept everything working, for next time:
+  1. Remove the old device (Matter → device → ⋮ → Remove device), so its
+     entity IDs are free.
+  2. Pair the reset sensor, name the device and set its area. Say **no** when
+     HA offers to rename the entity IDs to match.
+  3. Rename each new entity's ID back to the old one (here `_2` → `_3`).
+
+  The recorder then logs `Cannot rename statistic_id ..._2 to ..._3` and
+  `Cannot migrate history`, which is the good outcome: the old `_3` history and
+  long-term statistics stay, and the new readings carry on in the same series,
+  with a gap for the outage. Only the minutes recorded under `_2` before the
+  rename are left behind.
 
 ## Follow-ups
 
