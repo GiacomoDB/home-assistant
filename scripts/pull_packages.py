@@ -15,9 +15,9 @@ PULL
    through the parent repo's URLs, so without this check, anyone holding the
    HA token could push a commit to a fork and have HA install it. GitHub's
    compare API says whether <sha> is main itself or an ancestor of it.
-2. Downloads that commit's tarball and reads only packages/*.yaml, www/*.js
-   and this script out of it. Nothing is extracted by path, so a crafted
-   archive cannot write anywhere else.
+2. Downloads that commit's tarball and reads only packages/*.yaml, www/*.js,
+   this script and the helper scripts in HELPER_MEMBER out of it. Nothing is
+   extracted by path, so a crafted archive cannot write anywhere else.
 3. Snapshots /config/packages to /config/deploy/packages.prev, then writes
    the changed files (each atomically) and deletes files that an earlier pull
    installed but the repo no longer has. Files added on the HA side by hand,
@@ -25,9 +25,11 @@ PULL
    The www/*.js cards go to /config/www/repo/ (served as /local/repo/), a
    folder of their own so files put in /config/www by hand are never touched.
    They are written as they come, outside the snapshot: a card can't fail
-   HA's config check, so it has nothing to roll back from.
+   HA's config check, so it has nothing to roll back from. The same goes for
+   the helper scripts, which go next to this one in /config/deploy/ for a
+   package's shell_command to run.
 4. Prints one JSON line: commit, changed, removed, www (the cards written),
-   and whether a restart is needed. A restart is needed when a change
+   helpers (the scripts written), and whether a restart is needed. A restart is needed when a change
    touches a domain that `homeassistant.reload_all` can't apply (anything
    outside RELOADABLE: a `sensor:` platform, `shell_command:`...). This
    script never reloads or restarts; CI does that after HA's config check
@@ -71,6 +73,9 @@ SHA = re.compile(r"^[0-9a-f]{40}$")
 # `ha.py validate`: !include_dir_named makes the filename the package key.
 PACKAGE_MEMBER = re.compile(r"^[^/]+/packages/([A-Za-z0-9_]+\.yaml)$")
 SELF_MEMBER = re.compile(r"^[^/]+/scripts/pull_packages\.py$")
+# Scripts a package's shell_command runs, named one by one: a new one is a
+# deliberate addition here, not anything that lands in scripts/.
+HELPER_MEMBER = re.compile(r"^[^/]+/scripts/(thread_snapshot\.py)$")
 WWW_MEMBER = re.compile(r"^[^/]+/www/([A-Za-z0-9_-]+\.js)$")
 MAX_DOWNLOAD = 20 * 1024 * 1024
 
@@ -173,6 +178,7 @@ def pull(sha: str) -> dict:
     archive = fetch(f"https://codeload.github.com/{REPO}/tar.gz/{sha}")
     files: dict[str, bytes] = {}
     cards: dict[str, bytes] = {}
+    helpers: dict[str, bytes] = {}
     new_self = None
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
         for member in tar.getmembers():
@@ -183,6 +189,8 @@ def pull(sha: str) -> dict:
                 files[match.group(1)] = tar.extractfile(member).read()
             elif SELF_MEMBER.match(member.name):
                 new_self = tar.extractfile(member).read()
+            elif helper := HELPER_MEMBER.match(member.name):
+                helpers[helper.group(1)] = tar.extractfile(member).read()
             else:
                 card = WWW_MEMBER.match(member.name)
                 if card:
@@ -220,6 +228,12 @@ def pull(sha: str) -> dict:
     MANIFEST.write_text(json.dumps(sorted(files)))
 
     written = install_cards(cards)
+    helpers_written = sorted(
+        name for name, data in helpers.items()
+        if not (STATE / name).exists() or (STATE / name).read_bytes() != data
+    )
+    for name in helpers_written:
+        write_atomic(STATE / name, helpers[name])
 
     # Takes effect from the next pull; this run finishes on the old code.
     if new_self is not None and (not SELF.exists() or SELF.read_bytes() != new_self):
@@ -230,6 +244,7 @@ def pull(sha: str) -> dict:
         "changed": changed,
         "removed": removed,
         "www": written,
+        "helpers": helpers_written,
         "restart": bool(reasons),
         "reasons": reasons,
     }

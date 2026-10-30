@@ -1,0 +1,136 @@
+# Two Matter sensors dropped off Thread, 2026-10-30
+
+**Status:** ALPSTUGA fixed by a power cycle. Hall timmer still offline after
+a battery reseat; next step below. As of 2026-10-30 11:30 UTC.
+
+All times UTC, which is also UK local time since the clocks went back on
+Oct 25.
+
+## Symptoms
+
+Two sensors went `unavailable` in the Matter integration the same day:
+
+| Device | Node | Last reading | Unavailable from | Power |
+|---|---|---|---|---|
+| **Hall timmer** (IKEA TIMMERFLOTTE temp/humidity, fw 1.0.21) | 14 (`@1:e`) | 04:24 | 04:33 | AAA, 65% / 2.57 V |
+| **ALPSTUGA** air quality monitor (IKEA, fw 1.0.26) | 8 (`@1:8`) | 10:30 | 10:35 | USB, mains |
+
+A third Matter device, **Lampada Cucina** (KAJPLATS E27 bulb, node 10), was
+also unavailable, but that's normal for it: since at least Oct 27 it comes
+online for a few minutes most evenings and drops again, which is the bulb
+being switched at the wall.
+
+## The mesh at the time
+
+Thread network on channel 11, credentials from Google (`thread.datasets`),
+no OpenThread Border Router add-on. Border router in the mesh: the Aqara hub
+(extended address `566e8370c00f8e0a`, named in `dashboards/house.yaml`). It
+isn't on HA's Matter fabric, so its own tables can't be read.
+
+| Node | Device | Role |
+|---|---|---|
+| 19 (`@1:13`) | Badjour (KAJPLATS E14 bulb) | **Leader** |
+| 8 (`@1:8`) | ALPSTUGA | Router |
+| 13 (`@1:d`) | GRILLPLATS plug | Router |
+| 10 (`@1:a`) | Lampada Cucina | REED, when powered |
+| 14 (`@1:e`) | Hall timmer | Sleepy, child of **Badjour** at −87 dBm, LQI 2 |
+| 18 (`@1:12`) | Kitchen timme | Sleepy, child of Badjour at −93 dBm, **LQI 1** |
+| 29 (`@1:1d`) | Babyroom timme | Sleepy, child of ALPSTUGA at −92 dBm, LQI 1 (moved elsewhere when ALPSTUGA dropped) |
+| 5, 6 | Occupancy (MYGGSPRAY), BILRESA scroll wheel | Sleepy, children of Badjour, good links |
+| 9, 15, 16 | KLIPPBOK leak sensor, LivRoom and Bathroom timmers | Sleepy, under the Aqara hub (from their own, older tables) |
+
+LQI runs 0–3. Anything at LQI 1, or below about −85 dBm, is on the edge.
+
+## Timeline
+
+- **Oct 27 18:58**: HA restart. Every node reconnects, including both.
+- **Oct 28 22:28 / 22:31**: one routine subscription timeout each, both
+  recovered within seconds.
+- **Oct 30 04:00**: the *Keep IKEA Thread sensors alive* automation presses
+  `identify` on Hall timmer; it answers.
+- **04:24**: Hall timmer's last reading.
+- **04:30**: the Matter server's subscription to it times out (5 m 38 s),
+  probes fail, the address is unreachable. **04:33** marked unavailable.
+- **10:30**: ALPSTUGA's last reading. **10:32** subscription times out
+  (1 m 39 s), probes fail. **10:35** marked unavailable.
+- **~11:00**: live neighbour tables read from Badjour and the GRILLPLATS plug:
+  neither lists ALPSTUGA any more (both did before), and Badjour no longer
+  lists Hall timmer as a child. `ping_node` fails for both.
+- **~11:16**: both power-cycled by hand. ALPSTUGA is back at **11:17** (boot
+  reason *power on*, reboot count 18). Hall timmer doesn't come back.
+- **11:25**: still no router claims Hall timmer, and ping still fails.
+
+## What we checked
+
+- **Matter, HA or the Matter server at fault?** No. Every other node stayed
+  connected through both drops, the HA core log has nothing Matter-related,
+  and in both cases the server's own log shows the node simply stopped
+  answering, then became unreachable over Thread. Ruled out.
+- **A shared cause (border router, mesh outage)?** No. The two drops are six
+  hours apart, and at each moment nothing else on the mesh had trouble.
+  Ruled out.
+- **Batteries.** Hall timmer read 65% / 2.57 V right before, in line with the
+  other timmers (55–77%). ALPSTUGA is USB-powered. Ruled out.
+- **Firmware updates.** Both are on the latest firmware HA knows of. Nothing
+  to update.
+- **Early warning in the logs.** The Matter server log goes back to Sep 11.
+  ALPSTUGA had 122 brief subscription timeouts before today (a few a week),
+  Hall timmer about 30, all recovered within seconds; nothing unusual in the
+  days before. No decline to see.
+- **Thread partitions.** The live routers all agreed (partition 2133470835,
+  leader 41). The battery devices' cached values disagree with each other,
+  but those caches are days old, so that proves nothing either way. There was
+  no recorded history of this to compare against.
+
+## Cause
+
+**ALPSTUGA froze.** A mains router that vanishes from every other router's
+neighbour table is either unpowered or hung, and it came straight back from a
+power cycle. With its firmware current and nothing else wrong on the mesh at
+10:32, the best explanation is a firmware hang in the device itself.
+Confidence: fairly high that it hung; what made it hang is unknown.
+
+**Hall timmer lost a weak link and can't get back on.** Its only parent was
+Badjour, at −87 dBm and LQI 2, already marginal. After it dropped, no router
+listed it as a child, and a battery reseat didn't change that. What tipped it
+over at 04:24 is unknown: Badjour has been up for 40 days, so the lamp
+wasn't switched off. Either it can't hear any router from where it sits, or
+it's stuck in a state a reboot doesn't clear. The test below tells those two
+apart.
+
+## Fix
+
+- ALPSTUGA: power cycle. Worked.
+- Hall timmer: battery reseat. Didn't work. **Next:** bring it next to the
+  GRILLPLATS plug or Badjour, reseat the battery, wait a few minutes.
+  - **If it rejoins:** it's range. It needs a mains Thread device between it
+    and Badjour (a smart plug in the hall), or it will keep dropping.
+  - **If it doesn't, even next to a router:** factory-reset and re-pair. That
+    makes new entity IDs; remove the old device in HA and rename the new
+    entities to the old IDs (`sensor.timmerflotte_temp_hmd_sensor_temperature_3`,
+    `_humidity_3`, ...), so the dashboards, `packages/bath_humidity.yaml` and
+    the UI automation *Keep IKEA Thread sensors alive* need no change.
+
+While Hall timmer is out, the bath humidity alert can't fire: it compares the
+bathroom to the hall.
+
+## Follow-ups
+
+- **Added: the Thread flight recorder** (`packages/thread_log.yaml`,
+  `scripts/thread_snapshot.py`). What stopped this investigation was having no
+  history of the mesh itself. It now snapshots every router's neighbour and
+  route tables, roles, partitions, reboot counts and boot reasons every 15
+  minutes and whenever a Matter device drops or returns. Next time, check
+  `/config/thread_log/` first: see [the toolbox](README.md#reading-the-thread-log).
+- **Kitchen timme** is the next one likely to drop: child of Badjour at
+  −93 dBm, LQI 1.
+- **Lampada Cucina** is switched at the wall, so it's a router that comes and
+  goes. Children that pick it as a parent get stranded each time it's turned
+  off. Better left always powered, or replaced by a smart plug as a router.
+- **The GRILLPLATS plug** had over 2,000 subscription timeouts between Sep 28
+  and Oct 19, none since Oct 22. Not related to this, and unexplained. Worth a
+  look if it comes back.
+- **If ALPSTUGA freezes again**, it's the device: a smart plug that
+  power-cycles it after 10 minutes unavailable would make it self-healing,
+  and it's worth reporting to IKEA with its firmware version.
+- Matter Server add-on 9.3.0 is out (running 9.2.0). Unrelated, but pending.

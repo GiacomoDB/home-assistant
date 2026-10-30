@@ -326,14 +326,16 @@ and SSH never has to be reachable from GitHub:
    - asks GitHub whether the commit is on `main`, and refuses it otherwise
      (GitHub serves a fork's commits from the parent repo's URLs);
    - downloads that commit's tarball and reads only `packages/*.yaml`,
-     `www/*.js` and itself from it;
+     `www/*.js`, itself and the helper scripts it names (today just
+     `scripts/thread_snapshot.py`) from it;
    - snapshots `/config/packages` to `/config/deploy/packages.prev`;
    - writes the changed files and deletes the ones an earlier pull installed
      that the repo no longer has. Files added by hand on the HA side are
      never touched;
    - writes the `www/*.js` cards to `/config/www/repo/` (served as
      `/local/repo/`; a folder of their own, so hand-placed files in
-     `/config/www` are left alone);
+     `/config/www` are left alone), and the helper scripts next to itself in
+     `/config/deploy/`, where a package's `shell_command` runs them;
    - reports what changed, and whether any change is outside what
      `reload_all` can apply.
 3. CI runs HA's config check (`POST /api/config/core/check_config`). If it

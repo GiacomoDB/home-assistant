@@ -64,6 +64,29 @@ and over the last 7 days.
   dashboard's Energy page and kept across restarts, so measured kWh can show
   in pounds. There's no smart meter to read a tariff from.
 
+## Thread flight recorder — `thread_log.yaml`
+
+Every 15 minutes, and whenever a Matter device drops out or comes back,
+`scripts/thread_snapshot.py` appends one line to
+`/config/thread_log/YYYY-MM.jsonl`: every router's neighbour and route tables
+(so each battery device's parent and signal), roles, partition and leader,
+reboot counts and boot reasons, plus which nodes are unreachable and whether
+they answer a ping. It only reads; battery devices are never queried, their
+link comes from their parent's table. About 20 MB a month at most; finished
+months are gzipped and only the last three are kept.
+
+Nothing acts on it. It's there for the next time a sensor drops: what the mesh
+looked like before, and the moment it happened. How to read it is in the
+[investigations toolbox](investigations/README.md#reading-the-thread-log).
+It also adds `sensor.matter_devices_unavailable`, the count of offline Matter
+devices with their names in `devices`, which is what triggers the extra
+snapshots.
+
+The script lives in `scripts/` and `pull_packages.py` copies it to
+`/config/deploy/`. A deploy that changes `pull_packages.py` only takes effect
+from the next one, so the first deploy of this package needs a rerun
+(`gh run rerun <id>`) before the script is there.
+
 ## Deploy plumbing — `deploy.yaml`
 
 Two shell commands, `pull_packages` and `rollback_packages`, that CI calls to

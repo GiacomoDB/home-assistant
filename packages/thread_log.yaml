@@ -1,0 +1,73 @@
+# Thread flight recorder.
+#
+# Appends a snapshot of the Thread mesh to /config/thread_log/<month>.jsonl
+# every 15 minutes, and again the moment a Matter device drops out or comes
+# back. Nothing reads it automatically: it is there so the next time a sensor
+# drops, there is a record of what the mesh looked like before and when it
+# happened. Which router each battery device hung off and how strong that link
+# was, whether a router had rebooted (and why), whether the network split.
+# None of that is in HA's history or the Matter server's log, and it's gone
+# from the devices by the time anyone looks. See
+# docs/investigations/2026-10-30-matter-sensors-dropped.md for the case that
+# prompted it, and scripts/thread_snapshot.py for what each line holds.
+#
+# The script must be at /config/deploy/thread_snapshot.py. pull_packages.py
+# installs it, but only from the deploy after the one that taught it to (it
+# updates itself last), so rerun the first deploy that ships this file once.
+#
+# Read-only towards the devices. Battery devices are never queried directly:
+# their parent and link come from the routers' tables.
+#
+# shell_command can't be reloaded: changing it needs a restart, which the
+# deploy notices and does by itself.
+
+shell_command:
+  # A templated shell_command runs without a shell, so `reason` can only ever
+  # be one argument.
+  thread_snapshot: "python3 /config/deploy/thread_snapshot.py --reason {{ reason }}"
+
+template:
+  - sensor:
+      - name: Matter devices unavailable
+        unique_id: matter_devices_unavailable
+        icon: mdi:help-circle-outline
+        # Devices, not entities: one offline node takes all its entities down.
+        state: >-
+          {{ integration_entities('matter') | select('is_state', 'unavailable')
+             | map('device_id') | reject('none') | unique | list | count }}
+        attributes:
+          devices: >-
+            {% set ns = namespace(names=[]) %}
+            {% for device in integration_entities('matter')
+                 | select('is_state', 'unavailable') | map('device_id')
+                 | reject('none') | unique %}
+              {% set ns.names = ns.names
+                   + [device_attr(device, 'name_by_user') or device_attr(device, 'name')] %}
+            {% endfor %}
+            {{ ns.names | sort }}
+
+automation:
+  - id: thread_snapshot
+    alias: "Thread: record a mesh snapshot"
+    description: >-
+      Every 15 minutes, and whenever the set of unavailable Matter devices
+      changes, append a snapshot of the Thread mesh to /config/thread_log/.
+    # A drop during a scheduled run still gets its own snapshot.
+    mode: queued
+    max: 3
+    triggers:
+      - trigger: time_pattern
+        minutes: "/15"
+        id: schedule
+      # The attribute, not the count: one device coming back as another drops
+      # leaves the count where it was.
+      - trigger: state
+        entity_id: sensor.matter_devices_unavailable
+        attribute: devices
+        id: change
+    actions:
+      - action: shell_command.thread_snapshot
+        data:
+          reason: "{{ trigger.id }}"
+        response_variable: result
+        continue_on_error: true

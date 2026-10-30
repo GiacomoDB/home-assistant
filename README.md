@@ -25,6 +25,7 @@ can run commands on it, so keep 2FA on the GitHub account.
 | [CARDS.md](docs/CARDS.md) | The custom cards, and the CSS rule they all follow |
 | [BLUEPRINTS.md](docs/BLUEPRINTS.md) | IKEA BILRESA scroll-wheel blueprints, with import buttons |
 | [ENTITIES.md](docs/ENTITIES.md) | Every entity ID the repo depends on |
+| [investigations/](docs/investigations/README.md) | Write-ups of past incidents, and the toolbox for looking into the live system |
 
 ## Layout
 
@@ -38,6 +39,7 @@ ikea-billresa-*.yaml  blueprints
 themes/               theme files, copied to HA by hand (currently unused)
 scripts/ha.py         validate / deploy / entity lookup CLI
 scripts/pull_packages.py  runs INSIDE HA: installs packages/ at a commit on main
+scripts/thread_snapshot.py  runs INSIDE HA: the Thread flight recorder (packages/thread_log.yaml)
 scripts/push-packages.sh  one-time bootstrap and manual fallback, over SSH on the LAN
 scripts/screenshot.mjs    screenshots of the dashboard views, for checking a deploy
 .github/workflows/    the deploy pipeline

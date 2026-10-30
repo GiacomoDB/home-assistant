@@ -864,6 +864,9 @@ def cmd_deploy_packages(args) -> int:
     # resource version, and browsers load the new file on their next reload.
     for name in result.get("www", []):
         print(f"  card     {name}")
+    # Helper scripts run when a shell_command calls them; nothing to reload.
+    for name in result.get("helpers", []):
+        print(f"  helper   {name}")
     if not changed and not removed:
         print("  packages unchanged; nothing to reload")
         ha.close()
