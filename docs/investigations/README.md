@@ -38,7 +38,7 @@ What's still open, and anything added so the next one is easier.
 
 | Date | What | Status |
 |---|---|---|
-| 2026-10-30 | [Two Matter sensors dropped off Thread](2026-10-30-matter-sensors-dropped.md): ALPSTUGA froze, and a TIMMERFLOTTE dropped that turned out to have had its name swapped with another since April. Includes how to re-pair a Matter device and keep its entity IDs and history | Open |
+| 2026-10-30 | [Two Matter sensors dropped off Thread](2026-10-30-matter-sensors-dropped.md): ALPSTUGA froze, and a TIMMERFLOTTE dropped that turned out to have had its name swapped with another since April. Includes how to re-pair a Matter device and keep its entity IDs and history | Resolved |
 
 ## Toolbox
 

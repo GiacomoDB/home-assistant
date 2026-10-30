@@ -1,10 +1,11 @@
 # Two Matter sensors dropped off Thread, 2026-10-30
 
-**Status:** open. ALPSTUGA fixed by a power cycle. The two TIMMERFLOTTEs
+**Status:** resolved. ALPSTUGA fixed by a power cycle. The two TIMMERFLOTTEs
 called "Hall timmer" and "LivRoom timmer" turned out to have had their **names
-swapped since they were paired in April** (see [Swapped names](#swapped-names)):
-the sensor that dropped is in the living room, and still needs a reset and
-re-pair. As of 2026-10-30 13:00 UTC.
+swapped since they were paired in April** (see [Swapped names](#swapped-names)).
+Both are now re-paired under the right names: the hall sensor as node 30
+(`_3`), the living room one, which had dropped, as node 31 (`_4`). As of
+2026-10-30 13:05 UTC.
 
 All times UTC, which is also UK local time since the clocks went back on
 Oct 25.
@@ -83,6 +84,10 @@ LQI runs 0–3. Anything at LQI 1, or below about −85 dBm, is on the edge.
   room, over the 10 days before the drop: node 14 ("Hall") tracks it closely
   (correlation 0.89, 0.19° apart), node 15 ("LivRoom") doesn't (0.43, 0.86°),
   no closer than the other rooms. **The two names were swapped.**
+- **12:57**: the living room sensor, factory-reset, is commissioned as node 31
+  (`@1:1f`), unique ID `c70158f2…a616` (node 14's), named "LivRoom timmer" in
+  the living room, entity IDs renamed to `_4` by 13:00. It joins Badjour at
+  −77 dBm, LQI 3 (it was −87 dBm, LQI 2 as node 14).
 
 ## What we checked
 
@@ -148,10 +153,11 @@ hand. An offline sensor can't blink, so rule out the ones that do.
 ## Fix
 
 - ALPSTUGA: power cycle. Worked.
-- The sensor in the living room (the one that dropped): still to do. Remove
-  the dead "LivRoom timmer" device (node 15) to free `_4`, factory-reset the
-  living room sensor, pair it as "LivRoom timmer", and rename its entities to
-  `_4`. Node 30 stays "Hall timmer", `_3`.
+- The sensor in the living room (the one that dropped): the dead "LivRoom
+  timmer" device (node 15) removed to free `_4`, the sensor factory-reset,
+  paired as node 31, named "LivRoom timmer", entities renamed to `_4`. Worked.
+  Whether a plain battery reseat would have brought it back isn't known: the
+  reseat went to the hall sensor.
 - Press Identify on every other sensor and check the right room blinks, in
   case these weren't the only two swapped.
 
