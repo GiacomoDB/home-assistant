@@ -21,7 +21,7 @@ can run commands on it, so keep 2FA on the GitHub account.
 |---|---|
 | [SETUP.md](docs/SETUP.md) | First run, credentials, GitHub secrets, the Cloudflare tunnel, how deploys work, every command |
 | [DASHBOARDS.md](docs/DASHBOARDS.md) | What each view shows, layout notes, themes |
-| [PACKAGES.md](docs/PACKAGES.md) | What each package does: alerts, heating, appliance stats |
+| [PACKAGES.md](docs/PACKAGES.md) | What each package does: alerts (and their second channel, ntfy), heating, appliance stats, the server |
 | [CARDS.md](docs/CARDS.md) | The custom cards, and the CSS rule they all follow |
 | [BLUEPRINTS.md](docs/BLUEPRINTS.md) | IKEA BILRESA scroll-wheel blueprints, with import buttons |
 | [ENTITIES.md](docs/ENTITIES.md) | Every entity ID the repo depends on |

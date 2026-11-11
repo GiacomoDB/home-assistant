@@ -647,6 +647,13 @@ automation:
             channel: Home Alerts
             importance: default
             tag: heating
+      # Second channel (packages/ntfy.yaml).
+      - action: rest_command.ntfy_home
+        continue_on_error: true
+        data:
+          title: "{{ title }}"
+          message: "{{ summary }}"
+          tags: thermometer
       - action: persistent_notification.create
         data:
           title: "{{ title }}"

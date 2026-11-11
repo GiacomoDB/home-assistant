@@ -108,6 +108,15 @@ automation:
           message: >-
             {{ summary }} One odd day is usually nothing; several in a row is
             the part worth mentioning to a vet.
+      # Second channel (packages/ntfy.yaml).
+      - action: rest_command.ntfy_home
+        continue_on_error: true
+        data:
+          title: "Cat drinking {{ direction }} {{ deviation_pct | int | abs }}%"
+          message: >-
+            {{ summary }} One odd day is usually nothing; several in a row is
+            the part worth mentioning to a vet.
+          tags: cat
       - action: persistent_notification.create
         data:
           title: "Cat drinking {{ direction }} {{ deviation_pct | int | abs }}%"

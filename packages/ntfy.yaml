@@ -1,0 +1,56 @@
+# ntfy: a second channel for the alerts.
+#
+# Every alert in this folder goes to the companion app first
+# (notify.mobile_app_...). That path needs Google's push service and the app
+# logged in to this HA. `rest_command.ntfy_home` posts the same alert to the
+# self-hosted ntfy server, which the phone's ntfy app already listens to for
+# the server's own alerts, so one of the two failing still leaves the other.
+#
+# The alert packages call it right after their notify action:
+#
+#   - action: rest_command.ntfy_home
+#     continue_on_error: true
+#     data:
+#       title: "Water leak detected"
+#       message: "Kitchen sink is wet."
+#       priority: 5        # 1-5, 3 when left out. 5 is ntfy's "urgent".
+#       tags: droplet      # ntfy emoji short codes, comma-separated
+#
+# `continue_on_error` matters: the server being down must not stop the
+# persistent notification that follows.
+#
+# It posts JSON to the server's base URL (the topic goes in the body) instead
+# of headers on /home: HTTP headers can't carry the non-ASCII characters a
+# title or sensor name may have.
+#
+# SECRETS, in /config/secrets.yaml on HA (this repo is public, so neither the
+# server's address nor the token is in it):
+#
+#   ntfy_home_url: https://<the ntfy server>
+#   ntfy_home_auth: Bearer tk_<token>
+#
+# The token belongs to the ntfy user `ha`, which can only write to the topic
+# `home`. The server side, and how to make the token, is in the vps repo
+# (CLAUDE.md, "Home Assistant"). Both secrets must exist before this package
+# is deployed: HA's config check fails on a missing secret, and the deploy
+# then rolls every package back.
+#
+# rest_command can't be reloaded: changing this file restarts HA, which the
+# deploy does by itself.
+
+rest_command:
+  ntfy_home:
+    url: !secret ntfy_home_url
+    method: post
+    content_type: "application/json"
+    headers:
+      Authorization: !secret ntfy_home_auth
+    timeout: 10
+    payload: >-
+      {{ {
+           "topic": "home",
+           "title": title,
+           "message": message,
+           "priority": priority | default(3) | int,
+           "tags": (tags | default("")).split(",") | map("trim") | select | list
+         } | to_json }}

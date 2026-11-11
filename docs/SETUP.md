@@ -391,6 +391,34 @@ Without SSH, do it by hand:
 | 2 | Developer Tools → YAML → **Check configuration** |
 | 3 | Restart Home Assistant |
 
+### Secrets on HA
+
+This repo is public, so a package that needs an address or a token reads it
+from `/config/secrets.yaml` on HA with `!secret`. `ha.py validate` accepts
+the tag without resolving it. HA's config check does resolve it: **a secret
+that isn't there fails the check, and the deploy rolls every package back**.
+Add the secrets first, then merge the package that uses them.
+
+| Secret | Used by | Value |
+|---|---|---|
+| `ntfy_home_url` | `ntfy.yaml` | The ntfy server's base URL, no topic and no trailing slash |
+| `ntfy_home_auth` | `ntfy.yaml` | `Bearer tk_...`: the token of the ntfy user `ha` (write-only on `home`) |
+| `vps_metrics_url` | `vps.yaml` | The website's `/api/metrics` URL (public, no key) |
+| `vps_weather_url` | `vps.yaml` | The API's `/api/v1/weather/glasgow` URL |
+| `vps_api_key` | `vps.yaml` | An API key made for HA, not the master key |
+
+The token and the key are made on the server; the vps repo's CLAUDE.md
+("Home Assistant") has the two commands. Edit `secrets.yaml` over SSH on the
+LAN (`ssh root@homeassistant.local`, then `vi /config/secrets.yaml`) or with
+the File Editor add-on. On the phone, subscribe the ntfy app to `home` on
+the same server as the VPS's `alerts`.
+
+To check a secret took, after the deploy:
+
+```sh
+python3 scripts/ha.py entities 'vps'
+```
+
 ### Verifying it loaded
 
 A package that fails to load does so quietly, and the automation half can load
@@ -405,3 +433,31 @@ python scripts/ha.py entities 'cat water'
 
 See [PACKAGES.md](PACKAGES.md): what each package does, and where its
 notifications go.
+
+---
+
+## Backups off the house
+
+HA's automatic backup runs every night and, unless a second location is
+set, stays on the HA box: a dead disk takes the config, the history and the
+backups together. The Hetzner Storage Box that the VPS already uses speaks
+WebDAV, and HA can back up to WebDAV directly, so no server sits in between.
+
+1. Hetzner console → the Storage Box → **Sub-accounts** → new sub-account
+   with its own directory (e.g. `ha-backups`), **WebDAV** and **external
+   reachability** enabled, nothing else. A sub-account sees only its
+   directory, so HA's password can't reach the media or the VPS's own
+   backups.
+2. HA → Settings → Devices & services → Add integration → **WebDAV**. URL
+   `https://<sub-account>.your-storagebox.de`, the sub-account's user and
+   password, backup path `/`.
+3. HA → Settings → System → Backups → **Configure backup settings** →
+   Locations: tick the WebDAV location, keep the local one. Set how many to
+   keep; they add up on the Storage Box otherwise.
+4. Keep the **encryption key** (same page) somewhere that isn't HA: without
+   it the offsite copies can't be opened.
+5. Run a backup by hand and check the file is on the Storage Box.
+
+Not done by this repo: all five steps are in HA's and Hetzner's UIs. They
+were written down on 2026-11-11 without being run here, so a screen may
+differ; step 5 is the test.
