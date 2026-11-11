@@ -80,14 +80,14 @@ template:
         unique_id: washing_machine_cycles
         unit_of_measurement: cycles
         state_class: total_increasing
-        icon: mdi:circle
+        icon: mdi:counter
         state: "{{ this.state | int(0) + (1 if finished else 0) }}"
 
       - name: Washing machine last cycle
         unique_id: washing_machine_last_cycle
         unit_of_measurement: min
         device_class: duration
-        icon: mdi:circle
+        icon: mdi:timer-outline
         state: >-
           {% set started = this.attributes.get('started') %}
           {% if finished %}
@@ -109,7 +109,7 @@ template:
       - name: Washing machine last cycle energy
         unique_id: washing_machine_last_cycle_energy
         unit_of_measurement: kWh
-        icon: mdi:circle
+        icon: mdi:lightning-bolt
         state: >-
           {% set e0 = this.attributes.get('energy_start') %}
           {% if (trigger.id == 'settled' or new_cycle) and this.attributes.get('open')
@@ -161,14 +161,14 @@ template:
         unique_id: tumble_dryer_cycles
         unit_of_measurement: cycles
         state_class: total_increasing
-        icon: mdi:circle
+        icon: mdi:counter
         state: "{{ this.state | int(0) + (1 if finished else 0) }}"
 
       - name: Tumble dryer last cycle
         unique_id: tumble_dryer_last_cycle
         unit_of_measurement: min
         device_class: duration
-        icon: mdi:circle
+        icon: mdi:timer-outline
         state: >-
           {% set started = this.attributes.get('started') %}
           {% if finished %}
@@ -190,7 +190,7 @@ template:
       - name: Tumble dryer last cycle energy
         unique_id: tumble_dryer_last_cycle_energy
         unit_of_measurement: kWh
-        icon: mdi:circle
+        icon: mdi:lightning-bolt
         state: >-
           {% set e0 = this.attributes.get('energy_start') %}
           {% if (trigger.id == 'settled' or new_cycle) and this.attributes.get('open')
@@ -230,7 +230,7 @@ template:
         unique_id: robot_vacuum_runs
         unit_of_measurement: runs
         state_class: total_increasing
-        icon: mdi:circle
+        icon: mdi:counter
         state: "{{ this.state | int(0) + (1 if new_run else 0) }}"
         attributes:
           last_run: "{{ now().isoformat() if new_run else this.attributes.get('last_run') }}"
@@ -241,7 +241,7 @@ template:
   - sensor:
       - name: Washing machine status
         unique_id: washing_machine_status
-        icon: mdi:circle
+        icon: mdi:washing-machine
         state: >-
           {% set m = states('sensor.washing_machine_machine_state') %}
           {% set j = states('sensor.washing_machine_job_state') %}
@@ -265,7 +265,7 @@ template:
       # Same as the washer's, with the dryer's entities.
       - name: Tumble dryer status
         unique_id: tumble_dryer_status
-        icon: mdi:circle
+        icon: mdi:tumble-dryer
         state: >-
           {% set m = states('sensor.tumble_dryer_machine_state') %}
           {% set j = states('sensor.tumble_dryer_job_state') %}
@@ -288,7 +288,7 @@ template:
 
       - name: Robot vacuum status
         unique_id: robot_vacuum_status
-        icon: mdi:circle
+        icon: mdi:robot-vacuum
         state: >-
           {% set mv = states('sensor.robot_vacuum_movement') %}
           {% set names = {'charging': 'Docked, charging', 'idle': 'Idle',
@@ -314,7 +314,7 @@ template:
   - sensor:
       - name: Washing machine last cycle summary
         unique_id: washing_machine_last_cycle_summary
-        icon: mdi:circle
+        icon: mdi:history
         state: >-
           {% set d = states('sensor.washing_machine_last_cycle') %}
           {% set e = states('sensor.washing_machine_last_cycle_energy') %}
@@ -332,7 +332,7 @@ template:
 
       - name: Tumble dryer last cycle summary
         unique_id: tumble_dryer_last_cycle_summary
-        icon: mdi:circle
+        icon: mdi:history
         state: >-
           {% set d = states('sensor.tumble_dryer_last_cycle') %}
           {% set e = states('sensor.tumble_dryer_last_cycle_energy') %}
@@ -350,7 +350,7 @@ template:
 
       - name: Robot vacuum last run
         unique_id: robot_vacuum_last_run
-        icon: mdi:circle
+        icon: mdi:history
         state: >-
           {% set t = as_datetime(state_attr('sensor.robot_vacuum_runs', 'last_run'), none) %}
           {{ (time_since(t) ~ ' ago') if t else 'No run yet' }}

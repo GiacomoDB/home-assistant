@@ -14,4 +14,4 @@ input_number:
     step: 0.01
     unit_of_measurement: "p/kWh"
     mode: box
-    icon: mdi:circle
+    icon: mdi:currency-gbp

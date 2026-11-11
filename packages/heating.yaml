@@ -131,7 +131,7 @@ schedule:
 input_boolean:
   heating_controller_enabled:
     name: Heating controller live
-    icon: mdi:circle
+    icon: mdi:thermostat-auto
 
 input_number:
   heating_setback:
@@ -144,7 +144,7 @@ input_number:
     initial: 16
     unit_of_measurement: "°C"
     mode: box
-    icon: mdi:circle
+    icon: mdi:thermometer-low
   # The dashboard's manual control. Moving it starts a hold; see MANUAL CONTROL.
   heating_manual_target:
     name: Heating manual target
@@ -154,7 +154,7 @@ input_number:
     step: 0.5
     unit_of_measurement: "°C"
     mode: slider
-    icon: mdi:circle
+    icon: mdi:thermostat
   # Bookkeeping, not a control: the last setpoint the controller sent. See
   # MANUAL CONTROL IS ON THE DASHBOARD above.
   heating_last_written:
@@ -164,30 +164,30 @@ input_number:
     step: 0.5
     unit_of_measurement: "°C"
     mode: box
-    icon: mdi:circle
+    icon: mdi:thermometer-check
 
 input_datetime:
   heating_override_until:
     name: Heating manual override until
     has_date: true
     has_time: true
-    icon: mdi:circle
+    icon: mdi:pause-circle-outline
   heating_hold_until:
     name: Heating hold until
     has_date: true
     has_time: true
-    icon: mdi:circle
+    icon: mdi:timer-sand
 
 timer:
   heating_boost:
     name: Heating boost
     duration: "00:15:00"
-    icon: mdi:circle
+    icon: mdi:fire
 
 script:
   heating_resume:
     alias: "Heating: resume schedule"
-    icon: mdi:circle
+    icon: mdi:calendar-clock
     sequence:
       - action: input_datetime.set_datetime
         target:

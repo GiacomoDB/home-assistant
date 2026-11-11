@@ -47,6 +47,8 @@ const ROOM_COLOURS = ['#B4530F', '#2563B8', '#0B6E78', '#8A6FB5', '#C0882B', '#5
 
 const PAGES = [['home', 'Home'], ['heating', 'Heating'], ['cat', 'Cat'], ['energy', 'Energy'],
   ['appliances', 'Appliances'], ['network', 'Network'], ['mesh', 'Mesh'], ['lights', 'Lights']];
+const PAGE_ICONS = { home: 'mdi:home', heating: 'mdi:radiator', cat: 'mdi:cat', energy: 'mdi:lightning-bolt',
+  appliances: 'mdi:washing-machine', network: 'mdi:lan', mesh: 'mdi:hub-outline', lights: 'mdi:lightbulb-group' };
 
 const BOOST_TARGET = 25;
 const STEP_DELAY_MS = 1200;
@@ -63,11 +65,10 @@ const BOILER_HISTORY_DAYS = 10;
 const MONTHS = 11;
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-const ICON = '<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">'
-  + '<circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle></svg>';
-
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const icon = (name) => `<ha-icon icon="${esc(name)}" aria-hidden="true"></ha-icon>`;
 
 const num = (value) => {
   const n = parseFloat(value);
@@ -442,7 +443,7 @@ class LaptopDashboardCard extends HTMLElement {
     const nav = phone ? '' : `<nav aria-label="Views">
           <div class="brand">Home Assistant</div>
           ${PAGES.map(([key, name]) => `<a href="${esc(pageUrl(key))}" data-action="nav" data-page="${key}"
-            class="${key === page ? 'here' : ''}" ${key === page ? 'aria-current="page"' : ''}>${ICON}<span>${name}</span></a>`).join('')}
+            class="${key === page ? 'here' : ''}" ${key === page ? 'aria-current="page"' : ''}>${icon(PAGE_ICONS[key])}<span>${name}</span></a>`).join('')}
         </nav>`;
     const back = phone && page !== 'home'
       ? `<a class="back" href="${esc(pageUrl('home'))}" data-action="nav" data-page="home">‹ Home</a>` : '';
@@ -1100,7 +1101,7 @@ class LaptopDashboardCard extends HTMLElement {
     rows.push(['mesh', 'Mesh', sensorsDown ? `${plural(sensorsDown, 'sensor', 'sensors')} offline` : 'All sensors reporting', '']);
     const house = `<h2 class="section">House</h2>
       <div class="card house" role="navigation" aria-label="Pages">${rows.map(([page, title, detail, value]) => `<a class="house-row"
-        href="${esc(pageUrl(page))}" data-action="nav" data-page="${page}">${ICON}
+        href="${esc(pageUrl(page))}" data-action="nav" data-page="${page}">${icon(PAGE_ICONS[page])}
         <span class="stack grow"><span class="strong">${esc(title)}</span><span class="note clip">${esc(detail)}</span></span>
         <span class="strong">${esc(value)}</span><span class="muted" aria-hidden="true">›</span></a>`).join('')}</div>`;
 
@@ -1443,7 +1444,7 @@ class LaptopDashboardCard extends HTMLElement {
       const level = Math.round(((s?.attributes.brightness ?? 255) / 255) * 100);
       return `<section class="card light-card ${offline ? 'offline' : ''} ${on ? 'on' : ''}" aria-label="${esc(l.name)}">
         <div class="title-row">
-          <div class="light-title">${ICON}<span class="stack"><h2>${esc(l.name)}</h2><span class="note">${esc(l.kind || '')}</span></span></div>
+          <div class="light-title">${icon(l.icon || 'mdi:lightbulb')}<span class="stack"><h2>${esc(l.name)}</h2><span class="note">${esc(l.kind || '')}</span></span></div>
           ${offline ? '<span class="alert-text strong">Offline</span>'
             : `<button class="${on ? 'primary' : ''}" data-action="toggle" data-entity="${esc(l.entity)}" aria-pressed="${on}">${on ? 'On' : 'Off'}</button>`}
         </div>
@@ -1561,7 +1562,7 @@ function lightButton(s, l) {
   const on = s?.state === 'on';
   return `<button class="light ${offline ? 'offline' : ''} ${on ? 'on' : ''}" data-action="toggle"
     data-entity="${esc(l.entity)}" ${offline ? 'disabled' : ''} aria-pressed="${on}">
-    ${ICON}<span class="light-name">${esc(l.name)}</span><span>${offline ? 'Offline' : on ? 'On' : 'Off'}</span></button>`;
+    ${icon(l.icon || 'mdi:lightbulb')}<span class="light-name">${esc(l.name)}</span><span>${offline ? 'Offline' : on ? 'On' : 'Off'}</span></button>`;
 }
 
 function stat(value, unit, label) {
@@ -1684,6 +1685,7 @@ function loadFonts() {
 const STYLES = `
   :host { display: block; }
   * { box-sizing: border-box; }
+  ha-icon { --mdc-icon-size: 18px; display: inline-flex; flex: none; }
   .page { min-height: 100vh; background: ${C.ground}; color: ${C.ink};
     font-family: 'Schibsted Grotesk', system-ui, sans-serif; }
   .wrap { max-width: 1440px; margin: 0 auto; padding: 24px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
@@ -1783,7 +1785,7 @@ const STYLES = `
   .light-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .light-card.offline { box-shadow: inset 0 0 0 1px ${C.alertLine}; }
   .light-card.offline .light-title { color: ${C.alertFg}; }
-  .light-card.on .light-title svg { color: ${C.heat}; }
+  .light-card.on .light-title ha-icon { color: ${C.heat}; }
   .light-title { display: flex; align-items: center; gap: 12px; color: ${C.grey}; }
   .light-title h2 { color: ${C.ink}; }
   .fix { background: ${C.alertBg}; color: ${C.alertFg}; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.45; }
@@ -1898,7 +1900,7 @@ const STYLES = `
   .house-row { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 0 16px; color: ${C.ink}; border-top: 1px solid ${C.line}; }
   .house-row:first-child { border-top: none; }
   .house-row:hover { color: ${C.ink}; background: ${C.faint}; }
-  .house-row svg { color: ${C.accent}; flex: none; }
+  .house-row ha-icon { color: ${C.accent}; }
   .grow { flex: 1; min-width: 0; }
   .clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

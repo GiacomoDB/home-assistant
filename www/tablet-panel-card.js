@@ -37,11 +37,10 @@ const BOOST_TARGET = 25;
 const STEP_DELAY_MS = 1200;
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-const ICON = '<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">'
-  + '<circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle></svg>';
-
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const icon = (name) => `<ha-icon icon="${esc(name)}" aria-hidden="true"></ha-icon>`;
 
 const num = (value) => {
   const n = parseFloat(value);
@@ -249,28 +248,28 @@ class TabletPanelCard extends HTMLElement {
       .filter((s) => s.attributes.device_class === 'moisture' && s.state === 'on')
       .map((s) => s.attributes.friendly_name || s.entity_id);
     const items = [];
-    if (leaks.length) items.push([`Water leak`, leaks.join(', ')]);
+    if (leaks.length) items.push(['mdi:water-alert', `Water leak`, leaks.join(', ')]);
     // Battery devices not reporting, by the rule of attention-card.yaml (the feeder aside).
     const sensors = Object.values(this._hass.states)
       .filter((s) => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery'
         && !`${s.entity_id} ${s.attributes.friendly_name || ''}`.toLowerCase().includes('granary')
         && Number.isNaN(parseFloat(s.state)))
       .map((s) => (s.attributes.friendly_name || s.entity_id).replace(/ Battery$/, '').replace(/ Sensor$/, ''));
-    if (sensors.length) items.push([`${sensors.length} sensor${sensors.length > 1 ? 's' : ''} offline`, sensors.join(', ')]);
+    if (sensors.length) items.push(['mdi:signal-off', `${sensors.length} sensor${sensors.length > 1 ? 's' : ''} offline`, sensors.join(', ')]);
     // The router: 'off' is the line down; no answer for 5 min is the router itself.
     const wan = this._state(this._config.internet_entity);
     if (this._config.internet_entity) {
       const since = wan ? new Date(wan.last_changed) : null;
       const at = since ? `since ${since.toDateString() === new Date().toDateString() ? hhmm(since) : since.toLocaleDateString('en-GB', { weekday: 'short' })}` : '';
-      if (wan?.state === 'off') items.push(['Internet down', at]);
-      else if (!wan || (wan.state === 'unavailable' && Date.now() - since.getTime() > 5 * 60000)) items.push(['Router not answering', at]);
+      if (wan?.state === 'off') items.push(['mdi:web-off', 'Internet down', at]);
+      else if (!wan || (wan.state === 'unavailable' && Date.now() - since.getTime() > 5 * 60000)) items.push(['mdi:router-wireless-off', 'Router not answering', at]);
     }
     if (offline.length) {
-      items.push([`${offline.length} light${offline.length > 1 ? 's' : ''} offline`, offline.join(', ')]);
+      items.push(['mdi:lightbulb-off', `${offline.length} light${offline.length > 1 ? 's' : ''} offline`, offline.join(', ')]);
     }
     if (!items.length) return '';
-    return items.map(([title, detail]) => `<div class="alert" role="status">
-      ${ICON}<strong>${esc(title)}</strong><span>${esc(detail)}</span></div>`).join('');
+    return items.map(([name, title, detail]) => `<div class="alert" role="status">
+      ${icon(name)}<strong>${esc(title)}</strong><span>${esc(detail)}</span></div>`).join('');
   }
 
   _heating(t) {
@@ -442,7 +441,7 @@ class TabletPanelCard extends HTMLElement {
           const state = offline ? 'Offline' : on ? 'On' : 'Off';
           return `<button class="light ${offline ? 'offline' : ''} ${on ? 'on' : ''}" data-action="toggle"
             data-entity="${esc(l.entity)}" ${offline ? 'disabled' : ''} aria-pressed="${on}">
-            ${ICON}<span class="light-name">${esc(l.name)}</span><span>${state}</span></button>`;
+            ${icon(l.icon || 'mdi:lightbulb')}<span class="light-name">${esc(l.name)}</span><span>${state}</span></button>`;
         }).join('')}
       </div>
     </section>`;
@@ -479,6 +478,7 @@ function styles(t) {
   return `
   :host { display: block; }
   * { box-sizing: border-box; }
+  ha-icon { --mdc-icon-size: 18px; display: inline-flex; flex: none; }
   .panel {
     height: 100vh; height: 100dvh; max-width: 900px; margin: 0 auto; padding: 24px;
     display: flex; flex-direction: column; gap: 16px; overflow: hidden;

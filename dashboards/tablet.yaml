@@ -86,16 +86,23 @@ views:
         # The router's WAN status: an alert when the internet is down.
         internet_entity: binary_sensor.icotera_router_wan_status
 
+        # `icon` is the light's Material Design Icon; mdi:lightbulb if left out.
         lights:
           - name: Big light
             entity: switch.big_light
+            icon: mdi:ceiling-light
           - name: Tree
             entity: switch.tree
+            icon: mdi:pine-tree
           - name: Entrance
             entity: switch.kettelinch
+            icon: mdi:coach-lamp
           - name: Lampada Cucina
             entity: light.kajplats_e27_ws_globe_1521lm
+            icon: mdi:countertop
           - name: Lampadina
             entity: switch.lampadina
+            icon: mdi:lightbulb
           - name: Badjour
             entity: light.kajplats_e14_ws_globe_806lm
+            icon: mdi:lamp

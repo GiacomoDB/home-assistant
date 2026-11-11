@@ -1092,7 +1092,7 @@ def cmd_deploy(args) -> int:
 
     # Before the dashboards, so a dashboard never renders without its card.
     ensure_resources(ha, args.dry_run)
-    existing = {d.get("url_path") for d in ha_dashboards(ha)}
+    existing = {d.get("url_path"): d for d in ha_dashboards(ha)}
 
     for entry in entries:
         config = configs[entry["file"]]
@@ -1114,12 +1114,25 @@ def cmd_deploy(args) -> int:
                     "lovelace/dashboards/create",
                     url_path=url_path,
                     title=entry.get("title", url_path),
-                    icon=entry.get("icon", "mdi:circle"),
+                    icon=entry.get("icon", "mdi:view-dashboard"),
                     mode="storage",
                     show_in_sidebar=True,
                     require_admin=False,
                 )
                 print(f"  created dashboard {url_path}")
+        # The sidebar icon follows the manifest on dashboards that already
+        # exist too. The built-in Overview has no id and no icon to set.
+        elif entry.get("icon") and existing[url_path].get("id") \
+                and existing[url_path].get("icon") != entry["icon"]:
+            if args.dry_run:
+                print(f"  dry-run: would set {url_path} icon to {entry['icon']}")
+            else:
+                ha.command(
+                    "lovelace/dashboards/update",
+                    dashboard_id=existing[url_path]["id"],
+                    icon=entry["icon"],
+                )
+                print(f"  {url_path} icon → {entry['icon']}")
 
         if args.dry_run:
             print(f"  dry-run: would deploy {label}")

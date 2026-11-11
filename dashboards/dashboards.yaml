@@ -24,21 +24,22 @@
 
 # The wall tablet. `deploy` creates the dashboard the first time (an HA
 # dashboard must exist before its config can be saved), using `title` and
-# `icon` for the sidebar entry; after that only the config is written.
+# `icon` for the sidebar entry; after that the config is written, and the
+# sidebar icon again whenever `icon` here changes.
 - file: tablet.yaml
   url_path: dashboard-tablet
   title: Tablet
-  icon: mdi:circle
+  icon: mdi:tablet
 
 # The laptop: seven pages (home, heating, cat, energy, appliances, network,
 # lights), created on the first deploy like the tablet's.
 - file: laptop.yaml
   url_path: dashboard-laptop
   title: Laptop
-  icon: mdi:circle
+  icon: mdi:laptop
 
 # The phone: the same seven pages in one column, with a phone Home.
 - file: phone.yaml
   url_path: dashboard-phone
   title: Phone
-  icon: mdi:circle
+  icon: mdi:cellphone

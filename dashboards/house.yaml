@@ -163,29 +163,36 @@ network:
       entity: switch.adguard_home_parental_control
 
 # `fix` shows on the Lights page while a light is offline.
+# `icon` is the light's Material Design Icon; mdi:lightbulb if left out.
 lights:
   - name: Big light
     entity: switch.big_light
+    icon: mdi:ceiling-light
     kind: TP-Link plug
     fix: &tplink "If the plug has power, HA has lost its sign-in: Settings → Devices & services → TP-Link → Reconfigure."
   - name: Tree
     entity: switch.tree
+    icon: mdi:pine-tree
     kind: TP-Link plug
     fix: *tplink
   - name: Entrance
     entity: switch.kettelinch
+    icon: mdi:coach-lamp
     kind: TP-Link plug
     fix: *tplink
   - name: Lampada Cucina
     entity: light.kajplats_e27_ws_globe_1521lm
+    icon: mdi:countertop
     kind: IKEA bulb (Matter)
     fix: &bulb "Usually switched off at the wall. Switch it back on and HA finds it again within a minute or two."
   - name: Lampadina
     entity: switch.lampadina
+    icon: mdi:lightbulb
     kind: TP-Link plug
     fix: *tplink
   - name: Badjour
     entity: light.kajplats_e14_ws_globe_806lm
+    icon: mdi:lamp
     kind: IKEA bulb (Matter)
     fix: *bulb
 
