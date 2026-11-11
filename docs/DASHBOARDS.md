@@ -56,7 +56,9 @@ and energy per day and per month (`packages/appliances.yaml`).
 
 The wall tablet, a Galaxy Tab A7 in portrait (about 800×1280 CSS px): the
 state of the house on one screen, read from across the room. A clock and the
-weather, warnings (lights offline, water leaks; hidden when there are none),
+weather, with the Met Office's notes for the day under it when there are any
+(rain, wind, UV, visibility), warnings (lights offline, water leaks, the
+server; hidden when there are none),
 the heating with −/+, Boost, Back to schedule, the boiler's time on today
 and today's schedule as a bar, the six rooms, eight small tiles (fountain, litter box, energy, air, washer,
 dryer, vacuum, network) and the lights as toggles. Light colours by day,

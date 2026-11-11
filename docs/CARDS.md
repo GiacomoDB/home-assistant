@@ -94,8 +94,9 @@ or none reporting a temperature, the strip omits itself.
 
 ## Attention Card
 
-`attention-card.yaml` — water leaks, sensors that have stopped reporting, and
-low batteries. Renders nothing whatsoever when everything is fine.
+`attention-card.yaml` — water leaks, sensors that have stopped reporting, the
+server (`binary_sensor.vps_problem`, from `packages/vps.yaml`) and low
+batteries. Renders nothing whatsoever when everything is fine.
 
 **Requires:** the `html-template-card` custom card (installable via HACS).
 

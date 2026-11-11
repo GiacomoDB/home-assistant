@@ -13,12 +13,16 @@
 #                     IKEA Thread sensors drop often enough that there is an
 #                     automation pressing `identify` on five of them every two
 #                     hours to keep them awake, so this row earns its place.
-#   3. LOW BATTERY  — days of warning, not minutes.
+#   3. SERVER       — the VPS not answering, one of its containers down, or its
+#                     disk nearly full (packages/vps.yaml). It alerts the phone
+#                     by itself; this is the same fact for whoever walks past.
+#   4. LOW BATTERY  — days of warning, not minutes.
 #
 # Nothing here is a hardcoded entity list. Leaks are found by
 # `device_class: moisture` and batteries by `device_class: battery`, so a newly
 # paired device is covered the moment it exists — a fixed list would silently
 # stop covering new devices, which is the exact failure this card is for.
+# The one named entity is `binary_sensor.vps_problem`: there is one server.
 #
 # Cost of that choice: iterating `states` subscribes the template to all state
 # changes rather than a named few. Fine for one card; it is why this pattern is
@@ -92,7 +96,12 @@ content: >
     {% set ns.flagged = ns.flagged + [tidy(s.name, [' Battery', ' Sensor']) | trim] %}
   {% endfor %}
 
-  {% set total = ns.leaks | count + ns.offline | count + ns.flagged | count + ns.low | count %}
+  {#- Only while the sensor is on. Before packages/vps.yaml is installed it
+      doesn't exist, which reads as not on, so the row stays away. -#}
+  {% set vps = (state_attr('binary_sensor.vps_problem', 'detail') or 'Problem') | trim
+       if is_state('binary_sensor.vps_problem', 'on') else '' %}
+
+  {% set total = ns.leaks | count + ns.offline | count + ns.flagged | count + ns.low | count + (1 if vps else 0) %}
 
   {% if total == 0 %}
     <div class="att-empty"></div>
@@ -181,6 +190,16 @@ content: >
             <span class="att-val muted">Offline</span>
           </div>
         {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if vps %}
+      <div class="att-group">
+        <div class="att-title">Server</div>
+        <div class="att-row">
+          <span class="att-name">{{ vps }}</span>
+          <span class="att-val muted">VPS</span>
+        </div>
       </div>
     {% endif %}
 

@@ -74,6 +74,13 @@ automation:
             tag: bath-humidity
           title: "Bathroom damp: {{ bath }}%"
           message: "{{ summary }}"
+      # Second channel (packages/ntfy.yaml).
+      - action: rest_command.ntfy_home
+        continue_on_error: true
+        data:
+          title: "Bathroom damp: {{ bath }}%"
+          message: "{{ summary }}"
+          tags: droplet
       - action: persistent_notification.create
         data:
           title: "Bathroom damp: {{ bath }}%"

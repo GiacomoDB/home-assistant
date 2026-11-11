@@ -20,6 +20,8 @@ views:
           from: "22:00"
           to: "07:00"
         weather_entity: weather.forecast_home
+        # The Met Office's notes for today, under the temperature (packages/vps.yaml).
+        weather_alerts_entity: sensor.met_office_alerts
 
         heating:
           climate_entity: climate.heating
@@ -85,6 +87,8 @@ views:
 
         # The router's WAN status: an alert when the internet is down.
         internet_entity: binary_sensor.icotera_router_wan_status
+        # The VPS: an alert when it isn't answering or something on it is down.
+        vps_entity: binary_sensor.vps_problem
 
         # `icon` is the light's Material Design Icon; mdi:lightbulb if left out.
         lights:

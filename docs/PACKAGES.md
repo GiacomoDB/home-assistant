@@ -26,6 +26,14 @@ top of each automation's `variables:` is the one place to change that
 carries a `tag`, so a repeat replaces the previous notification instead of
 stacking, and a `channel`, so Android can tune each alert type.
 
+Each also goes to **ntfy**, a second path to the phone that needs neither
+Google's push service nor the companion app: `rest_command.ntfy_home`, from
+`ntfy.yaml`, posts to the topic `home` on the self-hosted ntfy server. The
+water leak goes at ntfy's top priority, the rest at the default. The
+server's address and the token are secrets on HA
+([SETUP.md](SETUP.md#secrets-on-ha)). ntfy has no `tag`, so repeats stack
+there.
+
 ## Heating — `heating.yaml`
 
 HA owns the heating schedule and drives tado **locally over HomeKit**: tado's
@@ -63,6 +71,21 @@ and over the last 7 days.
 - **`energy.yaml`**: the electricity unit rate, set from the laptop
   dashboard's Energy page and kept across restarts, so measured kWh can show
   in pounds. There's no smart meter to read a tariff from.
+
+## The server — `vps.yaml`
+
+The VPS that runs the website and Jellyfin, read from the house. Its public
+status payload gives `sensor.vps_disk`, `sensor.vps_memory` and
+`sensor.vps_containers_down`; `binary_sensor.vps_problem` turns on after ten
+minutes of it not answering, a container being down, or the disk at 85%, and
+shows in the attention card and the tablet's warnings. It stays off while
+the router says the house's own line is down. Nothing here notifies: the
+server alerts the phone by itself.
+
+The same package reads the Met Office's notes for today from the server's
+API (`sensor.met_office_alerts`), which the tablet shows under the
+temperature. It needs an API key, one of three secrets
+([SETUP.md](SETUP.md#secrets-on-ha)).
 
 ## Thread flight recorder — `thread_log.yaml`
 

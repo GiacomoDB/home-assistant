@@ -310,6 +310,19 @@ def _construct_include(loader: IncludeLoader, node):
 IncludeLoader.add_constructor("!include", _construct_include)
 
 
+class PackageLoader(yaml.SafeLoader):
+    """SafeLoader plus `!secret name`, read as the plain string `name`.
+
+    A package may keep an address or a token in HA's /config/secrets.yaml
+    (this repo is public). The value only exists on HA, so here the tag is
+    accepted and never resolved; HA's own config check, which every deploy
+    runs, is what fails on a secret that isn't there.
+    """
+
+
+PackageLoader.add_constructor("!secret", lambda loader, node: loader.construct_scalar(node))
+
+
 def load_yaml(path: Path):
     """Parse a YAML file with !include support."""
     with path.open() as handle:
@@ -413,7 +426,7 @@ def validate_packages() -> tuple[list[str], list[str]]:
 
     for path in sorted(PACKAGE_DIR.glob("*.yaml")):
         try:
-            doc = yaml.safe_load(path.read_text())
+            doc = yaml.load(path.read_text(), PackageLoader)  # noqa: S506 -- SafeLoader subclass
         except yaml.YAMLError as exc:
             problems.append(f"{path.name}: not valid YAML -- {exc}")
             continue

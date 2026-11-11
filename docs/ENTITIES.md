@@ -172,6 +172,10 @@ will not exist until those are installed (see [SETUP.md](SETUP.md#packages-autom
 | `sensor.washing_machine_last_cycle_energy`, `sensor.tumble_dryer_last_cycle_energy` | `packages/appliances.yaml` | Energy of the last cycle, from the lifetime counter, taken 30 min after the stop. 0.1 kWh steps, so approximate |
 | `sensor.washing_machine_last_cycle_summary`, `sensor.tumble_dryer_last_cycle_summary` | `packages/appliances.yaml` | The last cycle in one line for the dashboard, e.g. "83 min · 0.4 kWh · 2 days ago" |
 | `sensor.robot_vacuum_last_run` | `packages/appliances.yaml` | "3 hours ago", or "No run yet" |
+| `sensor.vps_disk`, `sensor.vps_memory` | `packages/vps.yaml` | The server's disk and memory in use, %, from its public status payload every 2 minutes |
+| `sensor.vps_containers_down` | `packages/vps.yaml` | Names of the server's containers that aren't running or are unhealthy; `none` when all are fine |
+| `binary_sensor.vps_problem` | `packages/vps.yaml` | On after 10 minutes of the server not answering, a container down, or its disk at 85%+. `detail` says which. Stays off while the router reports the line down |
+| `sensor.met_office_alerts` | `packages/vps.yaml` | How many Met Office notes today has for Glasgow; `alerts` and `highlights` hold them as `{kind, text}` |
 
 It reads empty for roughly the first week, and the automation stays deliberately
 silent until `age_coverage_ratio` reaches 0.8 rather than comparing against an

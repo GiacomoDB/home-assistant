@@ -230,11 +230,16 @@ class TabletPanelCard extends HTMLElement {
     const wx = this._state(this._config.weather_entity);
     const temp = wx ? num(wx.attributes.temperature) : null;
     const condition = wx ? wx.state.replace('partlycloudy', 'partly cloudy').replace(/-/g, ' ') : '';
+    // The Met Office's notes for today (packages/vps.yaml): rain, wind, UV,
+    // visibility. Nothing on a day without any, or before the sensor exists.
+    const notes = this._state(this._config.weather_alerts_entity)?.attributes.alerts;
+    const outlook = Array.isArray(notes) ? notes.map((n) => n.text).filter(Boolean).join(' · ') : '';
     return `<header class="top">
       <div class="clock">${hhmm(now)}</div>
       <div class="when">
         <div>${esc(date)}</div>
         ${temp === null ? '' : `<div><span class="mono big">${temp.toFixed(1)}°</span> ${esc(condition)}</div>`}
+        ${outlook ? `<div class="outlook">${esc(outlook)}</div>` : ''}
       </div>
     </header>`;
   }
@@ -267,6 +272,10 @@ class TabletPanelCard extends HTMLElement {
     if (offline.length) {
       items.push(['mdi:lightbulb-off', `${offline.length} light${offline.length > 1 ? 's' : ''} offline`, offline.join(', ')]);
     }
+    // The VPS: not answering, a container down, or its disk nearly full.
+    const vps = this._state(this._config.vps_entity);
+    // mdi:circle is the placeholder icon, to swap for a real one.
+    if (vps?.state === 'on') items.push(['mdi:circle', 'Server', String(vps.attributes.detail || 'problem').trim()]);
     if (!items.length) return '';
     return items.map(([name, title, detail]) => `<div class="alert" role="status">
       ${icon(name)}<strong>${esc(title)}</strong><span>${esc(detail)}</span></div>`).join('');
@@ -500,6 +509,11 @@ function styles(t) {
   .clock { font-family: 'IBM Plex Mono', monospace; font-size: 120px; font-weight: 500; line-height: .9; letter-spacing: -5px; }
   .when { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-bottom: 6px; font-size: 20px; color: ${t.muted}; }
   .when .big { font-size: 30px; color: ${t.ink}; }
+  /* min-width 0 lets .when shrink beside the clock, so a long outlook wraps
+     onto a second line (and no further) instead of pushing the clock. */
+  .when { min-width: 0; }
+  .when .outlook { font-size: 15px; line-height: 1.3; text-align: right; overflow: hidden;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
   .alert { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 0 18px; border-radius: 12px;
     background: ${t.alertBg}; color: ${t.alertFg}; font-size: 16px; }

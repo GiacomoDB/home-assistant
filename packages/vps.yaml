@@ -1,0 +1,114 @@
+# The VPS, seen from the house.
+#
+# Two things from the server that runs the website, Jellyfin and the rest
+# (the vps repo), for the dashboards:
+#
+#   1. Its health, from the same public payload its status page shows: disk,
+#      memory, and which containers are down. `binary_sensor.vps_problem`
+#      sums that up for attention-card.yaml and the tablet's alert strip.
+#   2. The Met Office's notes for today in Glasgow (rain, wind, UV,
+#      visibility), which the server's API already works out. The tablet
+#      shows them under the temperature.
+#
+# The server alerts the phone by itself (Uptime Kuma and ntfy). This is not a
+# second alarm: nothing here notifies. It puts the same state where the rest
+# of the house's state already is.
+#
+# SECRETS, in /config/secrets.yaml on HA (this repo is public, so the
+# server's addresses stay out of it):
+#
+#   vps_metrics_url: https://<the site>/api/metrics
+#   vps_weather_url: https://<the API>/api/v1/weather/glasgow
+#   vps_api_key: <a key made for HA, never the master key>
+#
+# How to make the key is in the vps repo (CLAUDE.md, "Home Assistant"). All
+# three must exist before this package is deployed: HA's config check fails
+# on a missing secret, and the deploy then rolls every package back.
+#
+# `rest:` can't be reloaded: changing it restarts HA, which the deploy does
+# by itself.
+#
+# Every `icon:` below is the placeholder mdi:circle, to swap for a real one.
+
+rest:
+  # Public, no key. The server refreshes it every few seconds; every two
+  # minutes is plenty for a dashboard.
+  - resource: !secret vps_metrics_url
+    scan_interval: 120
+    timeout: 20
+    sensor:
+      - name: "VPS disk"
+        unique_id: vps_disk
+        icon: mdi:circle
+        unit_of_measurement: "%"
+        state_class: measurement
+        value_template: "{{ value_json.disk.percent }}"
+      - name: "VPS memory"
+        unique_id: vps_memory
+        icon: mdi:circle
+        unit_of_measurement: "%"
+        state_class: measurement
+        value_template: "{{ value_json.memory.percent }}"
+      # Names of the containers that aren't running or report unhealthy,
+      # "none" when all are fine. A container without a healthcheck has
+      # health null, which counts as fine.
+      - name: "VPS containers down"
+        unique_id: vps_containers_down
+        icon: mdi:circle
+        value_template: >-
+          {% set c = value_json.docker.containers | default([]) %}
+          {% set bad = (c | rejectattr('status', 'eq', 'running') | map(attribute='name') | list)
+                     + (c | selectattr('health', 'eq', 'unhealthy') | map(attribute='name') | list) %}
+          {{ bad | unique | join(', ') if bad else 'none' }}
+
+  # The forecast changes a few times a day and the API caches it for ten
+  # minutes, so every 15 minutes is generous.
+  - resource: !secret vps_weather_url
+    headers:
+      X-API-Key: !secret vps_api_key
+    scan_interval: 900
+    timeout: 30
+    sensor:
+      # State: how many notes today. `alerts` and `highlights` are lists of
+      # {kind, text}; the tablet reads `alerts`.
+      - name: "Met Office alerts"
+        unique_id: met_office_alerts
+        icon: mdi:circle
+        value_template: "{{ value_json.data.alerts | count }}"
+        json_attributes_path: "$.data"
+        json_attributes:
+          - alerts
+          - highlights
+
+template:
+  - binary_sensor:
+      # On when the server hasn't answered, a container is down, or its disk
+      # is nearly full. `detail` says which, for the dashboards.
+      #
+      # delay_on: one missed poll makes the sensors unavailable, and so does
+      # an HA restart until the first poll. Ten minutes is five polls.
+      #
+      # The router check: with the house's own line down nothing answers,
+      # and the tablet already says "Internet down". That isn't the server's
+      # problem.
+      - name: "VPS problem"
+        unique_id: vps_problem
+        device_class: problem
+        icon: mdi:circle
+        delay_on:
+          minutes: 10
+        state: >-
+          {% set disk = states('sensor.vps_disk') %}
+          {% set down = states('sensor.vps_containers_down') %}
+          {{ not is_state('binary_sensor.icotera_router_wan_status', 'off')
+             and (not disk | is_number
+                  or disk | float >= 85
+                  or down not in ['none', 'unknown', 'unavailable']) }}
+        attributes:
+          detail: >-
+            {% set disk = states('sensor.vps_disk') %}
+            {% set down = states('sensor.vps_containers_down') %}
+            {% if not disk | is_number %}Not answering
+            {% elif down not in ['none', 'unknown', 'unavailable'] %}{{ down }} down
+            {% elif disk | float >= 85 %}Disk {{ disk | float | round(0) | int }}% full
+            {% else %}OK{% endif %}
